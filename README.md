@@ -65,7 +65,7 @@ Each character has a score calculated as follows:
 ## Relevant Definitions ##
 
 Refer to the [example skeleton
-code](https://github.com/NESTLab/RBE470x-projects/blob/master/teamNN/testcharacter.py),
+code](https://github.com/NESTLab/RBE470x-projects/blob/master/team04/testcharacter.py),
 also reported here:
 
     # This is necessary to find the main code
