@@ -10,15 +10,16 @@ from game import Game
 sys.path.insert(1, '../team04')
 
 # Uncomment this if you want the empty test character
-from astarcharacter import AStarCharacter
+from dlbfscharacter import DLDFSCharacter
 
 # Create the game
 g = Game.fromfile('map.txt')
 
 # Uncomment this if you want the test character
-g.add_character(AStarCharacter("me", # name
-                              "C",  # avatar
-                              0, 0  # position
+g.add_character(DLDFSCharacter("me", # name
+                              "C",   # avatar
+                              0, 0,  # position
+                              [ None ] # actors
 ))
 
 g.go(1)
