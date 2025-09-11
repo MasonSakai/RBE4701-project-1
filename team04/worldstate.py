@@ -47,7 +47,7 @@ class WorldStateTree:
         Returns true if the position x, y is safe to navigate\n
         This only checks for walls, explosions, and the edge of the map
         """
-        if x < 0 or x >= self.world.width() or y < 0 or y > self.world.height():
+        if x < 0 or x >= self.world.width() or y < 0 or y >= self.world.height():
             return False
         return not self.world.wall_at(x, y) and not self.world.explosion_at(x, y)
     def get_safe_neighbors(self, x: int, y: int) -> list[tuple[int, int]]:
@@ -83,6 +83,22 @@ class WorldStateTree:
             if monster.name == name:
                 return monster
     
+    def is_in_range(self, x: int, y: int, rad: int) -> CharacterEntity | None:
+        closest = None
+        distance = rad + 1
+
+        for dx in range(-rad, rad + 1, 1):
+            if (x + dx) >= 0 and (x + dx) < self.world.width():
+                for dy in range(-rad, rad + 1, 1):
+                    if max(dx, dy) < distance and (y + dy) >= 0 and (y + dy) < self.world.height():
+                        chars = self.world.characters_at(x + dx, y + dy)
+                        if chars:
+                            closest = chars[0]
+                            distance = max(dx, dy)
+            
+        return closest
+
+
     def get_next(self) -> list['WorldStateTree']:
         """
         Gets the child nodes to this world state\n
@@ -130,7 +146,11 @@ class WorldStateTree:
             else:
                 in_range = self.is_in_range(monster.x, monster.y, actor[2])
                 if in_range: # player to kill
-                    pass
+                    dx = in_range.x - monster.x
+                    dy = in_range.y - monster.y
+                    world = SensedWorld.from_world(self.world)
+                    WorldStateTree.get_monster_at(world, monster.name, monster.x, monster.y).move(dx, dy)
+                    self.child_states.append(WorldStateTree(self, world))
 
                 elif monster.dx != 0 and monster.dy != 0 and self.is_safe_pathable(monster.x + monster.dx, monster.y + monster.dy): # can continue walking
                     self.child_states.append(WorldStateTree(self, SensedWorld.from_world(self.world)))
