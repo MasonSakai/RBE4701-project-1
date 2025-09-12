@@ -120,6 +120,7 @@ class WorldStateTree:
                 world.me(actor).move(dx, dy)
                 self.child_states.append(WorldStateTree(self, world))
 
+            # TODO: please add a bomb check!
             world = SensedWorld.from_world(self.world)
             world.me(actor).place_bomb()
             self.child_states.append(WorldStateTree(self, world))
@@ -166,5 +167,43 @@ class WorldStateTree:
         print('Got {} children states'.format(len(self.child_states)))
         return self.child_states
     
+    
+    def are_equal(self, other: 'WorldStateTree') -> bool:
+        # check player and monster existance
+        # compare positions and movement
+        # check bomb states
+        # check walls
+        pass
+
+    def is_run_state(self) -> bool:
+        """
+        Is this a state where the world was ticked?
+        """
+        return self.actor_turn == 0
+    
+    def is_repeat_state(self, other: 'WorldStateTree' = None) -> bool:
+        """
+        Checks if the current state is a repeat to an earlier state\n
+        If given another WorldStateTree, will check up their state tree 
+        """
+        if not self.is_run_state:
+            raise Exception('Cannot run is_repeat_state on non-run state!')
+
+        if other is None:
+            other = self.parent_state
+        
+        while other is not None:
+            if other.is_run_state() and self.are_equal(other):
+                return True
+            other = other.parent_state
+
+        return False
+
     # Add a method to find which child a particular world state matches?
     # For no recalculating
+    def get_progressed_state(self, world: World) -> 'WorldStateTree':
+        """
+        Returns the immediate (is_run_state) child matching our new world state
+        """
+        pass
+
