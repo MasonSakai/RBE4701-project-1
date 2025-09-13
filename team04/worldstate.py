@@ -1,9 +1,9 @@
 import sys
+from typing import Any
 sys.path.insert(0, '../bomberman')
 from world import World
 from sensed_world import SensedWorld
-from events import Event
-from entity import CharacterEntity, MonsterEntity
+from entity import CharacterEntity, MonsterEntity, BombEntity, AIEntity, MovableEntity, PositionalEntity, TimedEntity, OwnedEntity
 
 class WorldStateTree:
     world: SensedWorld
@@ -98,6 +98,17 @@ class WorldStateTree:
             
         return closest
 
+    def find_bomb(self, player: CharacterEntity) -> bool:
+        """
+        Will attempt to find a bomb owned by a player
+        """
+        for x in range(self.world.width()):
+            for y in range(self.world.height()):
+                bomb: BombEntity = self.world.bomb_at(x, y)
+                if bomb is not None and not bomb.expired() and (player is None or bomb.owner.name == player.name):
+                    return True
+        return False
+
 
     def get_next(self) -> list['WorldStateTree']:
         """
@@ -120,10 +131,10 @@ class WorldStateTree:
                 world.me(actor).move(dx, dy)
                 self.child_states.append(WorldStateTree(self, world))
 
-            # TODO: please add a bomb check!
-            world = SensedWorld.from_world(self.world)
-            world.me(actor).place_bomb()
-            self.child_states.append(WorldStateTree(self, world))
+            if not self.find_bomb(player):
+                world = SensedWorld.from_world(self.world)
+                world.me(actor).place_bomb()
+                self.child_states.append(WorldStateTree(self, world))
 
         elif isinstance(actor, str): # actor is random
             print("Node is monster", actor)
@@ -167,20 +178,109 @@ class WorldStateTree:
         print('Got {} children states'.format(len(self.child_states)))
         return self.child_states
     
+
+
+    def fill_single_step(self):
+        """
+        Fills the world state tree via DFS until the next run state
+        """
+        stack = self.get_next().copy()
+        while len(stack) > 0:
+            state = stack.pop()
+            if not state.is_run_state():
+                stack.extend(state.get_next())
+
     
-    def are_equal(self, other: 'WorldStateTree') -> bool:
-        # check player and monster existance
-        # compare positions and movement
-        # check bomb states
-        # check walls
-        pass
+    def check_timed_entities(listA: dict[Any, PositionalEntity | TimedEntity | OwnedEntity], listB: dict[Any, PositionalEntity | TimedEntity | OwnedEntity]) -> bool:
+        matched_inds = set()
+        for keyA, valA in listA.items():
+            if valA.expired():
+                continue
+
+            if keyA in listB:
+                valB = listB[keyA]
+                if valA.timer != valB.timer:
+                    return False
+                if valA.owner.name != valB.owner.name:
+                    return False
+                if valA.x != valB.x:
+                    return False
+                if valA.y != valB.y:
+                    return False
+                matched_inds.add(keyA)
+        
+        for keyB, valB in listB.items():
+            if valB.expired():
+                continue
+            if keyB in matched_inds:
+                continue
+            return False
+        
+        return True
+
+    def check_ai_entities(listA: dict[Any, list[AIEntity | MovableEntity]], listB: dict[Any, list[AIEntity | MovableEntity]]) -> bool:
+        matched_inds = set()
+        for keyA, valA in listA.items():
+            valA = valA[0]
+            if keyA in listB:
+                valB = listB[keyA][0]
+                if valA.name != valB.name:
+                    return False
+                if valA.x != valB.x:
+                    return False
+                if valA.y != valB.y:
+                    return False
+                if valA.dx != valB.dx:
+                    return False
+                if valA.dy != valB.dy:
+                    return False
+                matched_inds.add(keyA)
+        
+        for keyB, valB in listB.items():
+            if keyB in matched_inds:
+                continue
+            return False
+        
+        return True
+
+    def are_equal(wrldA: World, wrldB: World) -> bool:
+        """
+        Checks if two worlds are equal
+        """
+        
+        if wrldA.width() != wrldB.width(): # check size
+            return False
+        if wrldA.height() != wrldB.height(): # check size
+            return False
+        
+        for x in range(wrldA.width()):
+            for y in range(wrldA.height()):
+                if wrldA.wall_at(x, y) != wrldB.wall_at(x, y): # check walls
+                    return False
+                if wrldA.exit_at(x, y) != wrldB.exit_at(x, y): # check exits
+                    return False
+                
+        if not WorldStateTree.check_timed_entities(wrldA.bombs, wrldB.bombs):
+            return False
+        if not WorldStateTree.check_timed_entities(wrldA.explosions, wrldB.explosions):
+            return False
+        
+        if not WorldStateTree.check_ai_entities(wrldA.characters, wrldB.characters):
+            return False
+        if not WorldStateTree.check_ai_entities(wrldA.monsters, wrldB.monsters):
+            return False
+
+
+        return True
 
     def is_run_state(self) -> bool:
         """
         Is this a state where the world was ticked?
         """
         return self.actor_turn == 0
-    
+    def has_children(self) -> bool:
+        return self.child_states != None
+
     def is_repeat_state(self, other: 'WorldStateTree' = None) -> bool:
         """
         Checks if the current state is a repeat to an earlier state\n
@@ -193,17 +293,34 @@ class WorldStateTree:
             other = self.parent_state
         
         while other is not None:
-            if other.is_run_state() and self.are_equal(other):
+            if other.is_run_state() and WorldStateTree.are_equal(self.world, other.world):
                 return True
             other = other.parent_state
 
         return False
 
-    # Add a method to find which child a particular world state matches?
-    # For no recalculating
     def get_progressed_state(self, world: World) -> 'WorldStateTree':
         """
         Returns the immediate (is_run_state) child matching our new world state
         """
-        pass
+        if not self.is_run_state:
+            raise Exception('Cannot run is_repeat_state on non-run state!')
+        
+        if self.child_states is None:
+            return None
+
+        stack = self.child_states.copy()
+        while len(stack) > 0:
+            state = stack.pop()
+            if state.is_run_state():
+                if WorldStateTree.are_equal(state.world, world):
+                    return state
+            elif state.child_states is not None:
+                stack.extend(state.child_states)
+        
+        return None
+
+        
+
+
 
