@@ -10,7 +10,7 @@ class WorldStateTree:
     actor_turn: int
     actors: list[CharacterEntity | str | tuple[str, tuple[int, int], int]]
     parent_state: 'WorldStateTree'
-    child_states: list['WorldStateTree']
+    child_states: list[tuple['WorldStateTree', float]]
     state_value = None
 
     def CreateTree(world: World, actors: list[CharacterEntity | str | tuple[str, int]]):
@@ -39,7 +39,8 @@ class WorldStateTree:
             self.actor_turn = parent_state.actor_turn + 1
             if self.actor_turn >= len(self.actors):
                 self.actor_turn = 0
-                (self.world, _) = self.world.next()
+                (self.world, events) = self.world.next()
+                # TODO: process events
 
 
     def is_safe_pathable(self, x: int, y: int) -> bool:
@@ -115,7 +116,7 @@ class WorldStateTree:
         Gets the child nodes to this world state\n
         Will calculate only when first called, set child_states to None to recalculate 
         """
-        if self.child_states:
+        if self.has_children():
             return self.child_states
         
         self.child_states = []
@@ -175,6 +176,8 @@ class WorldStateTree:
                         WorldStateTree.get_monster_at(world, monster.name, monster.x, monster.y).move(dx, dy)
                         self.child_states.append(WorldStateTree(self, world))
 
+        p = 1 / len(self.child_states)
+        self.child_states = list(map(lambda s: (s, p), self.child_states))
         print('Got {} children states'.format(len(self.child_states)))
         return self.child_states
     
@@ -186,7 +189,7 @@ class WorldStateTree:
         """
         stack = self.get_next().copy()
         while len(stack) > 0:
-            state = stack.pop()
+            state = stack.pop()[0]
             if not state.is_run_state():
                 stack.extend(state.get_next())
 
@@ -311,11 +314,11 @@ class WorldStateTree:
 
         stack = self.child_states.copy()
         while len(stack) > 0:
-            state = stack.pop()
+            state = stack.pop()[0]
             if state.is_run_state():
                 if WorldStateTree.are_equal(state.world, world):
                     return state
-            elif state.child_states is not None:
+            elif state.has_children():
                 stack.extend(state.child_states)
         
         return None
