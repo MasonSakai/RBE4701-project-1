@@ -3,54 +3,58 @@ from typing import Any
 sys.path.insert(0, '../bomberman')
 from world import World
 from sensed_world import SensedWorld
-from entity import CharacterEntity, MonsterEntity, BombEntity, AIEntity, MovableEntity, PositionalEntity, TimedEntity, OwnedEntity
+from entity import CharacterEntity, MonsterEntity, AIEntity, MovableEntity, PositionalEntity, TimedEntity, OwnedEntity, __sign__
+from events import Event
 
 class WorldStateTree:
     world: SensedWorld
     actor_turn: int
-    actors: list[CharacterEntity | str | tuple[str, tuple[int, int], int]]
+    actors: list[CharacterEntity | tuple[str, float, float]]
     parent_state: 'WorldStateTree'
     child_states: list[tuple['WorldStateTree', float]]
     state_value = None
 
-    def CreateTree(world: World, actors: list[CharacterEntity | str | tuple[str, int]]):
+    def CreateTree(character: CharacterEntity, world: World):
         """
         Initilization of the search tree\n
-        Requries the current world, and the actors to search through
+        Requries the current world and the character
         """
-        tree = WorldStateTree(None, world)
-        tree.actors = actors
+        actors = [ character ]
+        for _, monsters in world.monsters.items():
+            for monster in monsters:
+                actors.append([monster.name, 0.5, 0.5])
+        tree = WorldStateTree(None, world, actors)
         return tree
 
-    def __init__(self, parent_state: 'WorldStateTree', world: World):
+    def __init__(self, parent_state: 'WorldStateTree', world: World, actors: list[CharacterEntity | tuple[str, float, float]]):
         """
         Creates a sub-node to a parent state and increments the actor turn\n
         Will automatically tick the world state, be sure to check the world's events when actor_turn == 0
         """
         self.parent_state = parent_state
         self.child_states = None
+        self.actors = actors
 
         if parent_state == None:
             self.actor_turn = 0
             self.world = SensedWorld.from_world(world)
         else:
-            self.actors = parent_state.actors
             self.world = world
             self.actor_turn = parent_state.actor_turn + 1
             if self.actor_turn >= len(self.actors):
                 self.actor_turn = 0
                 (self.world, events) = self.world.next()
-                # TODO: process events
+                for event in events:
+                    if isinstance(event, Event):
+                        if (event.tpe == Event.BOMB_HIT_CHARACTER and event.other.name == actors[0].name) or (event.tpe == Event.CHARACTER_KILLED_BY_MONSTER and event.character.name == actors[0].name):
+                            self.child_states = []
+                            self.actors.pop(0)
+                        elif event.tpe == Event.BOMB_HIT_MONSTER:
+                            for i in range(1, len(self.actors)):
+                                if self.actors[i][0] == event.other.name:
+                                    self.actors.pop(i)
+                                    break
 
-
-    def is_safe_pathable(self, x: int, y: int) -> bool:
-        """
-        Returns true if the position x, y is safe to navigate\n
-        This only checks for walls, explosions, and the edge of the map
-        """
-        if x < 0 or x >= self.world.width() or y < 0 or y >= self.world.height():
-            return False
-        return not self.world.wall_at(x, y) and not self.world.explosion_at(x, y)
     def get_safe_neighbors(self, x: int, y: int) -> list[tuple[int, int]]:
         """
         Gets the safe movements around the position x, y\n
@@ -58,60 +62,73 @@ class WorldStateTree:
         """
         neighbors = []
         for dx in [-1, 0, 1]:
-            for dy in [-1, 0, 1]:
-                if self.is_safe_pathable(x + dx, y + dy):
-                    neighbors.append((dx, dy))
+            if (x + dx) >= 0 and (x + dx) < self.world.width():
+                for dy in [-1, 0, 1]:
+                    if (y + dy) >= 0 and (y + dy) < self.world.height():
+                        if not self.world.wall_at(x + dx, y + dy) and not self.world.explosion_at(x + dx, y + dy) and not self.world.monsters_at(x + dx, y + dy):
+                            neighbors.append((dx, dy))
         return neighbors
     
-    def find_monster(self, name: str) -> MonsterEntity | None:
-        """
-        Will attempt to find a monster based on name
-        """
-        for x in range(self.world.width()):
-            for y in range(self.world.height()):
-                monsters = self.world.monsters_at(x, y)
-                if monsters is not None:
-                    for monster in monsters:
-                        if monster.name == name:
-                            return monster
-        return None
-    
-    def get_monster_at(world: SensedWorld, name: str, x: int, y: int) -> MonsterEntity:
-        """
-        Gets the monster at a position from a world. For world state copies
-        """
-        for monster in world.monsters_at(x, y):
-            if monster.name == name:
-                return monster
-    
-    def is_in_range(self, x: int, y: int, rad: int) -> CharacterEntity | None:
-        closest = None
-        distance = rad + 1
-
-        for dx in range(-rad, rad + 1, 1):
+    def must_change_direction(self, ent: MovableEntity) -> bool:
+        # Get next desired position
+        (nx, ny) = ent.nextpos()
+        # If next pos is out of bounds, must change direction
+        if ((nx < 0) or (nx >= self.world.width()) or
+            (ny < 0) or (ny >= self.world.height())):
+            return True
+        # If these cells are an explosion, a wall, or a monster, go away
+        return (self.world.explosion_at(nx, ny) or
+                self.world.wall_at(nx, ny) or
+                self.world.monsters_at(nx, ny) or
+                self.world.exit_at(nx, ny))
+    def random_monster_neighbors(self, x: int, y: int):
+        neighbors = []
+        for dx in [-1, 0, 1]:
             if (x + dx) >= 0 and (x + dx) < self.world.width():
-                for dy in range(-rad, rad + 1, 1):
-                    if max(dx, dy) < distance and (y + dy) >= 0 and (y + dy) < self.world.height():
-                        chars = self.world.characters_at(x + dx, y + dy)
-                        if chars:
-                            closest = chars[0]
-                            distance = max(dx, dy)
-            
-        return closest
-
+                for dy in [-1, 0, 1]:
+                    if (y + dy) >= 0 and (y + dy) < self.world.height():
+                        if not self.world.wall_at(x + dx, y + dy):
+                            neighbors.append((dx, dy))
+        return neighbors
+    def safe_monster_neighbors(self, x: int, y: int):
+        neighbors = []
+        for dx in [-1, 0, 1]:
+            if (x + dx) >= 0 and (x + dx) < self.world.width():
+                for dy in [-1, 0, 1]:
+                    if (y + dy) >= 0 and (y + dy) < self.world.height():
+                        if self.world.exit_at(x + dx, y + dy) or self.world.empty_at(x + dx, y + dy):
+                            neighbors.append((dx, dy))
+        return neighbors
+    
+    def look_for_character(self, x: int, y: int, rad: int) -> tuple[bool, int, int]:
+        for dx in range(-rad, rad+1):
+            # Avoid out-of-bounds access
+            if ((x + dx >= 0) and (x + dx < self.world.width())):
+                for dy in range(-rad, rad+1):
+                    # Avoid out-of-bounds access
+                    if ((y + dy >= 0) and (y + dy < self.world.height())):
+                        # Is a character at this position?
+                        if (self.world.characters_at(x + dx, y + dy)):
+                            return (True, dx, dy)
+        # Nothing found
+        return (False, 0, 0)
     def find_bomb(self, player: CharacterEntity) -> bool:
         """
         Will attempt to find a bomb owned by a player
         """
-        for x in range(self.world.width()):
-            for y in range(self.world.height()):
-                bomb: BombEntity = self.world.bomb_at(x, y)
-                if bomb is not None and not bomb.expired() and (player is None or bomb.owner.name == player.name):
-                    return True
+        for bomb in self.world.bombs.values():
+            if not bomb.expired() and (player is None or bomb.owner.name == player.name):
+                return True
         return False
 
+    def get_monster_with_name(world: World, name: str) -> MonsterEntity:
+        for _, monsters in world.monsters.items():
+            for monster in monsters:
+                if monster.name == name:
+                    return monster
+        return None
 
-    def get_next(self) -> list['WorldStateTree']:
+    def get_next(self) -> list[tuple['WorldStateTree', float]]:
         """
         Gets the child nodes to this world state\n
         Will calculate only when first called, set child_states to None to recalculate 
@@ -120,66 +137,84 @@ class WorldStateTree:
             return self.child_states
         
         self.child_states = []
-        print('Getting Next')
 
         actor = self.actors[self.actor_turn]
         if isinstance(actor, CharacterEntity): # actor is the player (random + bomb)
-            print("Node is player")
             player: CharacterEntity = self.world.me(actor)
             neighbors = self.get_safe_neighbors(player.x, player.y)
             for (dx, dy) in neighbors:
-                world = SensedWorld.from_world(self.world)
-                world.me(actor).move(dx, dy)
-                self.child_states.append(WorldStateTree(self, world))
+                n_world = SensedWorld.from_world(self.world)
+                n_world.me(actor).move(dx, dy)
+                self.child_states.append(WorldStateTree(self, n_world, self.actors.copy()))
 
             if not self.find_bomb(player):
-                world = SensedWorld.from_world(self.world)
-                world.me(actor).place_bomb()
-                self.child_states.append(WorldStateTree(self, world))
+                n_world = SensedWorld.from_world(self.world)
+                n_world.me(actor).place_bomb()
+                self.child_states.append(WorldStateTree(self, n_world, self.actors.copy()))
+                
+            p = 1 / len(self.child_states)
+            self.child_states = list(map(lambda s: (s, p), self.child_states))
+            return self.child_states
 
-        elif isinstance(actor, str): # actor is random
-            print("Node is monster", actor)
-            monster: MonsterEntity = self.find_monster(actor)
-            if monster == None: # Could not find monster (dead)
-                self.child_states.append(WorldStateTree(self, world))
-            else:
-                neighbors = self.get_safe_neighbors(monster.x, monster.y)
-                for (dx, dy) in neighbors: # do random walk
-                    if dx == 0 and dy == 0:
-                        continue
-                    world = SensedWorld.from_world(self.world)
-                    WorldStateTree.get_monster_at(world, monster.name, monster.x, monster.y).move(dx, dy)
-                    self.child_states.append(WorldStateTree(self, world))
+        else:
+            (mname, p_smart, p_r2) = actor
+            monster: MonsterEntity = WorldStateTree.get_monster_with_name(self.world, mname)
+            neighbors = self.random_monster_neighbors(monster.x, monster.y)
+            safe_neighbors = self.safe_monster_neighbors(monster.x, monster.y)
+            (has_t2, dx_t2, dy_t2) = self.look_for_character(monster.x, monster.y, 2)
+            (has_t1, dx_t1, dy_t1) = self.look_for_character(monster.x, monster.y, 1)
+            smart_change = self.must_change_direction(monster)
 
-        elif len(actor) == 3: # actor is not purely random
-            print("Node is monster", actor[0])
-            monster: MonsterEntity = self.find_monster(actor[0])
-            if monster == None: # Could not find monster (dead)
-                self.child_states.append(WorldStateTree(self, world))
-            else:
-                in_range = self.is_in_range(monster.x, monster.y, actor[2])
-                if in_range: # player to kill
-                    dx = in_range.x - monster.x
-                    dy = in_range.y - monster.y
-                    world = SensedWorld.from_world(self.world)
-                    WorldStateTree.get_monster_at(world, monster.name, monster.x, monster.y).move(dx, dy)
-                    self.child_states.append(WorldStateTree(self, world))
+            for (dx, dy) in neighbors:
+                actors_data = self.actors.copy()
 
-                elif monster.dx != 0 and monster.dy != 0 and self.is_safe_pathable(monster.x + monster.dx, monster.y + monster.dy): # can continue walking
-                    self.child_states.append(WorldStateTree(self, SensedWorld.from_world(self.world)))
-                else: # random direction
-                    neighbors = self.get_safe_neighbors(monster.x, monster.y)
-                    for (dx, dy) in neighbors: # do random walk
-                        if dx == 0 and dy == 0:
-                            continue
-                        world = SensedWorld.from_world(self.world)
-                        WorldStateTree.get_monster_at(world, monster.name, monster.x, monster.y).move(dx, dy)
-                        self.child_states.append(WorldStateTree(self, world))
+                p = 0
+                p_r = 1 / len(neighbors)
+                
+                if p_smart == 0: # Purely random
+                    p = p_r
+                else: # mix of smart and random
+                    is_natural = dx == monster.dx and dy == monster.dy
+                    p_s = 0
+                    p_sr = 1 / len(safe_neighbors)
 
-        p = 1 / len(self.child_states)
-        self.child_states = list(map(lambda s: (s, p), self.child_states))
-        print('Got {} children states'.format(len(self.child_states)))
-        return self.child_states
+                    np_smart = p_smart
+                    np_r2 = p_r2
+
+                    if not smart_change and (has_t1 or has_t2): # Not random and has target
+                        if (has_t2 and __sign__(dx_t2) == dx and __sign__(dy_t2) == dy) or (not has_t2 and is_natural):
+                            p_s += p_r2
+                            if has_t2: # increase probability of range 2
+                                np_r2 = min(1, np_r2 * 1.1)
+
+                        if (has_t1 and dx_t1 == dx and dy_t1 == dy) or (not has_t1 and is_natural):
+                            p_s += (1 - p_r2)
+                            if has_t1: # decrease probability of range 2
+                                np_r2 = np_r2 / 1.1
+                    
+                    elif smart_change or (dx == 0 and dy == 0): # random safe
+                        if any(map(lambda p: p[0] == dx and p[1] == dy, safe_neighbors)): # is a safe neighbor
+                            p_s = p_sr
+                        else: # stuck
+                            p_s = 1 if (dx == 0 and dy == 0) else 0
+
+                    else: # natural movement
+                        if is_natural:
+                            p_s = 1
+                        np_smart = 0 if not is_natural else min(1, p_smart * 1.1) # increase if natural, zero if random
+                    
+
+                    p = p_r * (1 - p_smart) + p_s * p_smart
+                    actors_data[self.actor_turn] = (mname, np_smart, np_r2)
+                
+                if p == 0:
+                    continue
+                n_world = SensedWorld.from_world(self.world)
+                WorldStateTree.get_monster_with_name(n_world, mname).move(dx, dy)
+                self.child_states.append((WorldStateTree(self, n_world, actors_data), p))
+        
+            self.child_states = list(sorted(self.child_states, key=lambda s: s[1]))
+            return self.child_states
     
 
 
@@ -211,6 +246,7 @@ class WorldStateTree:
                 if valA.y != valB.y:
                     return False
                 matched_inds.add(keyA)
+            return False
         
         for keyB, valB in listB.items():
             if valB.expired():
@@ -222,28 +258,26 @@ class WorldStateTree:
         return True
 
     def check_ai_entities(listA: dict[Any, list[AIEntity | MovableEntity]], listB: dict[Any, list[AIEntity | MovableEntity]]) -> bool:
-        matched_inds = set()
-        for keyA, valA in listA.items():
-            valA = valA[0]
-            if keyA in listB:
-                valB = listB[keyA][0]
-                if valA.name != valB.name:
-                    return False
-                if valA.x != valB.x:
-                    return False
-                if valA.y != valB.y:
-                    return False
-                if valA.dx != valB.dx:
-                    return False
-                if valA.dy != valB.dy:
-                    return False
-                matched_inds.add(keyA)
-        
-        for keyB, valB in listB.items():
-            if keyB in matched_inds:
-                continue
+        def check_entity(valA):
+            for valsB in listB.values():
+                for valB in valsB:
+                    if valA.name == valB.name and valA.x == valB.x and valA.y == valB.y: #  and valA.dx == valB.dx and valA.dy == valB.dy:
+                        return True
             return False
+
+        matched_names = set()
+        for valsA in listA.values():
+            for valA in valsA:
+                if check_entity(valA):
+                    matched_names.add(valA.name)
+                else:
+                    return False
         
+        for valsB in listB.values():
+            for valB in valsB:
+                if valB.name not in matched_names:
+                    return False
+                
         return True
 
     def are_equal(wrldA: World, wrldB: World) -> bool:
@@ -272,8 +306,7 @@ class WorldStateTree:
             return False
         if not WorldStateTree.check_ai_entities(wrldA.monsters, wrldB.monsters):
             return False
-
-
+        
         return True
 
     def is_run_state(self) -> bool:

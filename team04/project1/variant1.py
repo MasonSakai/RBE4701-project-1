@@ -18,8 +18,7 @@ g = Game.fromfile('map.txt')
 # Uncomment this if you want the test character
 g.add_character(DLDFSCharacter("me", # name
                               "C",   # avatar
-                              0, 0,  # position
-                              [ None ] # actors
+                              0, 0   # position
 ))
 
 g.go(1)
