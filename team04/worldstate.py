@@ -15,6 +15,7 @@ class WorldStateTree:
     parent_state: 'WorldStateTree'
     child_states: list[tuple['WorldStateTree', float | tuple[int, int] | bool]]
     state_value = None
+    character_event: bool | None = None
 
     def CreateTree(character: CharacterEntity, world: World):
         """
@@ -48,7 +49,8 @@ class WorldStateTree:
                 (self.world, events) = self.world.next()
                 for event in events:
                     if isinstance(event, Event):
-                        if (event.tpe == Event.BOMB_HIT_CHARACTER and event.other.name == actors[0].name) or (event.tpe == Event.CHARACTER_KILLED_BY_MONSTER and event.character.name == actors[0].name):
+                        if (event.tpe == Event.BOMB_HIT_CHARACTER and event.other.name == actors[0].name) or ((event.tpe == Event.CHARACTER_KILLED_BY_MONSTER or event.tpe == Event.CHARACTER_FOUND_EXIT) and event.character.name == actors[0].name):
+                            self.character_event = event.tpe == Event.CHARACTER_FOUND_EXIT
                             self.child_states = []
                             self.actors.pop(0)
                         elif event.tpe == Event.BOMB_HIT_MONSTER:
