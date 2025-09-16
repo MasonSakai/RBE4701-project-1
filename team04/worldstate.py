@@ -215,7 +215,7 @@ class WorldStateTree:
                 WorldStateTree.get_monster_with_name(n_world, mname).move(dx, dy)
                 self.child_states.append((WorldStateTree(self, n_world, actors_data), p))
         
-            self.child_states = list(sorted(self.child_states, key=lambda s: s[1]))
+            self.child_states = list(sorted(self.child_states, key=lambda s: s[1], reverse=True))
             return self.child_states
     
 
