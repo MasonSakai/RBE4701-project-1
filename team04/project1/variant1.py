@@ -10,7 +10,6 @@ from game import Game
 sys.path.insert(1, '../team04')
 
 # Uncomment this if you want the empty test character
-from dlbfscharacter import DLDFSCharacter
 from testcharacter import TestCharacter
 
 # Create the game
