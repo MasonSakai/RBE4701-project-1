@@ -11,7 +11,7 @@ class WorldStateTree:
     actor_turn: int
     actors: list[CharacterEntity | tuple[str, float, float]]
     parent_state: 'WorldStateTree'
-    child_states: list[tuple['WorldStateTree', float]]
+    child_states: list[tuple['WorldStateTree', float | tuple[int, int] | bool]]
     state_value = None
 
     def CreateTree(character: CharacterEntity, world: World):
@@ -19,10 +19,11 @@ class WorldStateTree:
         Initilization of the search tree\n
         Requries the current world and the character
         """
-        actors = [ character ]
+        actors = [ ]
         for _, monsters in world.monsters.items():
             for monster in monsters:
                 actors.append([monster.name, 0.5, 0.5])
+        actors.append(character)
         tree = WorldStateTree(None, world, actors)
         return tree
 
@@ -46,7 +47,7 @@ class WorldStateTree:
                 (self.world, events) = self.world.next()
                 for event in events:
                     if isinstance(event, Event):
-                        if (event.tpe == Event.BOMB_HIT_CHARACTER and event.other.name == actors[0].name) or (event.tpe == Event.CHARACTER_KILLED_BY_MONSTER and event.character.name == actors[0].name):
+                        if (event.tpe == Event.BOMB_HIT_CHARACTER and event.other.name == actors[-1].name) or (event.tpe == Event.CHARACTER_KILLED_BY_MONSTER and event.character.name == actors[-1].name):
                             self.child_states = []
                             self.actors.pop(0)
                         elif event.tpe == Event.BOMB_HIT_MONSTER:
@@ -128,7 +129,7 @@ class WorldStateTree:
                     return monster
         return None
 
-    def get_next(self) -> list[tuple['WorldStateTree', float]]:
+    def get_next(self) -> list[tuple['WorldStateTree', float | tuple[int, int] | bool]]:
         """
         Gets the child nodes to this world state\n
         Will calculate only when first called, set child_states to None to recalculate 
@@ -145,15 +146,13 @@ class WorldStateTree:
             for (dx, dy) in neighbors:
                 n_world = SensedWorld.from_world(self.world)
                 n_world.me(actor).move(dx, dy)
-                self.child_states.append(WorldStateTree(self, n_world, self.actors.copy()))
+                self.child_states.append((WorldStateTree(self, n_world, self.actors.copy()), (dx, dy)))
 
             if not self.find_bomb(player):
                 n_world = SensedWorld.from_world(self.world)
                 n_world.me(actor).place_bomb()
-                self.child_states.append(WorldStateTree(self, n_world, self.actors.copy()))
+                self.child_states.append((WorldStateTree(self, n_world, self.actors.copy()), True))
                 
-            p = 1 / len(self.child_states)
-            self.child_states = list(map(lambda s: (s, p), self.child_states))
             return self.child_states
 
         else:
@@ -316,6 +315,8 @@ class WorldStateTree:
         return self.actor_turn == 0
     def has_children(self) -> bool:
         return self.child_states != None
+    def is_player_turn(self) -> bool:
+        return isinstance(self.actors[self.actor_turn], CharacterEntity)
 
     def is_repeat_state(self, other: 'WorldStateTree' = None) -> bool:
         """
