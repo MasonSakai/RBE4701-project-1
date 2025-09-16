@@ -30,7 +30,7 @@ def evaluate_state(self, node: WorldStateTree) -> float:
 
     distance = abs(player_x - goal_x) + abs(player_y - goal_y)
 
-    return 1 / distance 
+    return -distance
 
 class TestCharacter(CharacterEntity):
     # def __init__(self, name, avatar, x, y, actors: list[CharacterEntity | str | tuple[str, int]]):
@@ -50,28 +50,33 @@ class TestCharacter(CharacterEntity):
         if generatedNode.actor_turn == 0:
             best_value = float('-inf')
             for child in generatedNode.get_next():
-                value = self.Expectimax(child, depth - 1)
+                value = self.Expectimax(child[0], depth - 1)
                 if value > best_value:
                     best_value = value
-                    best_action = child.action
+                    best_action = child[1]
             return best_value, best_action
         else:
             v = 0
             for child in generatedNode.get_next():
                 p = child[1]
-                value, _ = self.Expectimax(child, depth - 1)
+                value, _ = self.Expectimax(child[0], depth - 1)
                 v = v + p * value
             return v, None
     
     def do(self, wrld):
-        actors = [self, 'selfpreserving'] 
-        root = WorldStateTree.CreateTree(wrld, actors)
+        if self.tree:
+            self.tree = self.tree.get_progressed_state(wrld)
+        if not self.tree:
+            print("Tree Init")
+            self.tree = WorldStateTree.CreateTree(self, wrld)
         depth_limit = 3
-        value, best_action = self.Expectimax(root, depth=depth_limit)
+        value, best_action = self.Expectimax(self.tree, depth=depth_limit)
 
-        if best_action:
-            self.execute_action(best_action)
+        if isinstance(best_action, tuple):
+            wrld.me(self).move(best_action[0], best_action[1])
             return best_action
+        elif best_action == True:
+            wrld.me(self).place_bomb()
         else:
             return None
 
