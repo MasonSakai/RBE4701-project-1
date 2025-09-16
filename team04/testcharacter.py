@@ -8,6 +8,7 @@ from worldstate import WorldStateTree
 from math import inf
 from sensed_world import SensedWorld
 import math
+from queue import PriorityQueue
 
 class TestCharacter(CharacterEntity):
     tree: WorldStateTree = None
@@ -19,10 +20,25 @@ class TestCharacter(CharacterEntity):
     
     def evaluate_state(self, node: WorldStateTree) -> float:
 
-        goals = self.get_goals(node.world)
-        player_pos = (node.world.me(self).x, node.world.me(self).y)
-        distance = min(map(lambda p: self.dist(p, player_pos), goals))
+        # goals = self.get_goals(node.world)
+        # player_pos = (node.world.me(self).x, node.world.me(self).y)
+        # distance = min(map(lambda p: self.dist(p, player_pos), goals))
+        wrld = node.world
+        me = wrld.me(self)
 
+        if me is None:
+            # print("I am penalizing dying!!!!")
+            return -1000  # huge penalty for dying
+
+         # Goal reached
+        pos = (me.x, me.y)
+        if pos in self.get_goals(wrld):
+            return 100  # highest value (win)
+        
+        distance, _ = self.find_path(wrld)
+        if distance == float("inf"):
+            return -1000
+        # print(-distance)
         return -distance
 
     def get_goals(self, wrld: SensedWorld) -> set[tuple[int, int]]:
@@ -47,35 +63,91 @@ class TestCharacter(CharacterEntity):
                 if wrld.empty_at(pos[0] + x, pos[1] + y) or wrld.exit_at(pos[0] + x, pos[1] + y):
                     neighbors.append((pos[0] + x, pos[1] + y))
         return neighbors
+    
+    def find_path(self, wrld: SensedWorld):
+        start_pos = (wrld.me(self).x, wrld.me(self).y)
+
+        queue = PriorityQueue()
+        came_from = {start_pos: None}
+        cost_so_far = {start_pos: 0}
+
+        goals = self.get_goals(wrld)
+        found_goal = None
+
+        queue.put((0, start_pos))
+
+        while not queue.empty():
+            _, pos = queue.get(False)
+
+            if pos in goals:
+                found_goal = pos
+                break
+
+            for neighbor in self.get_neighbors(wrld, pos):
+                new_cost = cost_so_far[pos] + 1
+                if neighbor not in cost_so_far or new_cost < cost_so_far[neighbor]:
+                    cost_so_far[neighbor] = new_cost
+                    priority = new_cost + min(self.dist(g, neighbor) for g in goals)
+                    queue.put((priority, neighbor))
+                    came_from[neighbor] = pos
+
+        if not found_goal:
+            return float("inf"), None
+
+        path = []
+        pos = found_goal
+        while pos is not None:
+            path.append(pos)
+            pos = came_from[pos]
+        path.reverse() 
+
+        if len(path) > 1:
+            first_step = path[1]  
+        else:
+            first_step = None
+
+        return cost_so_far[found_goal], first_step
+
 
     def Expectimax(self, generatedNode: WorldStateTree, depth=3):
         # if generatedNode is None:
         #     return -inf, None
+        me = generatedNode.world.me(self)
+        # if me is None or (me.x, me.y) in self.get_goals(generatedNode.world) or depth == 0:
+        #     return self.evaluate_state(generatedNode), None
         if len(generatedNode.get_next()) == 0:
             return -1000, None
-        if depth == 0:
+        if depth == 0 or me is None or (me.x, me.y) in self.get_goals(generatedNode.world):
             return self.evaluate_state(generatedNode), None
         if generatedNode.is_player_turn():
             if depth == 0:
                 return self.evaluate_state(generatedNode), None
             best_value = float('-inf')
             for child in generatedNode.get_next():
-                value, _ = self.Expectimax(child[0], depth - 1)
-                value += self.dist((child[0].world.me(self).x, child[0].world.me(self).y), (self.x, self.y))
+                state = child[0]
+                one_child = state.world.me(self)
+                if one_child is not None:
+                    value, _ = self.Expectimax(child[0], depth - 1)
+                    value += self.dist((child[0].world.me(self).x, child[0].world.me(self).y), (self.x, self.y))
+                else:
+                    goals = self.get_goals(state.world)
+                    if generatedNode.world.me(self) and (generatedNode.world.me(self).x, generatedNode.world.me(self).y) in goals:
+                        # print("I'm in this goals function")
+                        value += 100
+                    else:
+                        # print("Am I dead?")
+                        value -= 1000
+                # print(f"depth {depth} action {child[1]} -> {value}")
                 if value > best_value:
                     best_value = value
                     best_action = child[1]
-            #print(depth, value, best_action)
+                    # print(depth, value, best_action)
             return best_value, best_action
         else:
             v = 0
             for child in generatedNode.get_next():
                 p = child[1]
-<<<<<<< Updated upstream
                 value, _ = self.Expectimax(child[0], depth)
-=======
-                value, _ = self.Expectimax(child[0], depth-1)
->>>>>>> Stashed changes
                 v = v + p * value
             return v, None
     
@@ -86,8 +158,9 @@ class TestCharacter(CharacterEntity):
             print("Tree Init")
             self.tree = WorldStateTree.CreateTree(self, wrld)
         # print(self.tree.actors)
-        depth_limit = 3
+        depth_limit = 2
         value, best_action = self.Expectimax(self.tree, depth=depth_limit)
+        # print("/n")
         print(value, best_action)
         if isinstance(best_action, tuple):
             self.move(best_action[0], best_action[1])
@@ -96,32 +169,7 @@ class TestCharacter(CharacterEntity):
         else:
             return None
 
-        
-# function Expectimax(self, generatedTree, depth)
-#     if generatedTree = []
-#         return -inf (i.e player is dead)
-#     if depth == 0 then
-#         return generatedTree.utility (scores will be evaluated in a separate function)
-#     else if generatedTree.actor_turn == 0 then
-#         best_value = −inf
-#         best_action = nothing
-#         for each child in generatedTree.children do
-#             value = self.Expectimax(child, depth - 1)
-#             if value > best_value then
-#                 best_value = value
-#                 best_action = child.action
-#         return best_action  
-#     else if generatedTree.actor_turn > 0 then
-#         v = 0
-#         for each child in generatedTree.children do
-#             p = child.probability
-#             v = v + p * Expectimax(child, depth - 1)
-#         return v
-# end function
-
     
-
-
 
 # The first time do is called, generate the tree and save it to the character's variables and then use get_progressed_state to update the tree
 # Move Character -> Progress State -> Expectimax -> Move Character -> Progress State -> Expectimax
