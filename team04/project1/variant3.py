@@ -12,8 +12,10 @@ from monsters.selfpreserving_monster import SelfPreservingMonster
 sys.path.insert(1, '../team04')
 from testcharacter import TestCharacter
 from astarcharacter import AStarCharacter
+from frankenstein import frankenstein
+from frankenstein_part3 import frankenstein3
 # Create the game
-random.seed(156) # TODO Change this if you want different random choices
+random.seed(834) # TODO Change this if you want different random choices
 g = Game.fromfile('map.txt')
 g.add_monster(SelfPreservingMonster("selfpreserving", # name
                                     "S",              # avatar
@@ -22,7 +24,7 @@ g.add_monster(SelfPreservingMonster("selfpreserving", # name
 ))
 
 # TODO Add your character
-g.add_character(AStarCharacter("me", # name
+g.add_character(frankenstein3("me", # name
                               "C",  # avatar
                               0, 0  # position
 ))
