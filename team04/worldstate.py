@@ -218,6 +218,17 @@ class WorldStateTree:
             self.child_states = list(sorted(self.child_states, key=lambda s: s[1], reverse=True))
             return self.child_states
     
+    def prune_parents(self):
+        """
+        Will remove all other children of the parent state\n
+        Is called recursively upwards
+        """
+        if not self.parent_state:
+            return
+
+        del self.parent_state.child_states
+        self.parent_state.child_states = [ self ]
+        self.parent_state.prune_parents()
 
 
     def fill_single_step(self):

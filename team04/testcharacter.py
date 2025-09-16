@@ -133,6 +133,7 @@ class TestCharacter(CharacterEntity):
     def do(self, wrld):
         if self.tree:
             self.tree = self.tree.get_progressed_state(wrld)
+            self.tree.prune_parents()
         if not self.tree:
             print("Tree Init")
             self.tree = WorldStateTree.CreateTree(self, wrld)
