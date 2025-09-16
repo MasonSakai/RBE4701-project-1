@@ -22,11 +22,6 @@ class TestCharacter(CharacterEntity):
 
         wrld = node.world
         me = wrld.me(self)
-
-        if node.character_event == True:
-            return 100
-        elif node.character_event == False:
-            return -1000
         
          # Goal reached
         # pos = (me.x, me.y)
@@ -108,45 +103,30 @@ class TestCharacter(CharacterEntity):
 
 
     def Expectimax(self, generatedNode: WorldStateTree, depth=3):
-        # if generatedNode is None:
-        #     return -inf, None
-        me = generatedNode.world.me(self)
-        # if me is None or (me.x, me.y) in self.get_goals(generatedNode.world) or depth == 0:
-        #     return self.evaluate_state(generatedNode), None
-        # print(generatedNode.character_event)
         if generatedNode.character_event == True:
-            print("I'm giving a high cost")
+            print("I'm giving a high cost", depth)
             return 100, None
         if generatedNode.character_event == False:
             return -1000, None
-        if depth == 0 or me is None or (me.x, me.y) in self.get_goals(generatedNode.world):
+        if depth == 0:
             return self.evaluate_state(generatedNode), None
         if generatedNode.is_player_turn():
-            if depth == 0:
-                return self.evaluate_state(generatedNode), None
             best_value = float('-inf')
-            for child in generatedNode.get_next():
-                # me_obj = child[0].world.me(self)
-                # if me_obj is None or me_obj.x is None:
-                #     generatedNode.character_event = True
-                # if generatedNode.character_event == True:
-                #     print("I'm giving a high cost")
-                #     return 100, None
-                # elif len(generatedNode.get_next()) == 0:
-                #     return -1000, None
-                value, _ = self.Expectimax(child[0], depth - 1)
-                value += self.dist((child[0].world.me(self).x, child[0].world.me(self).y), (self.x, self.y))
+            for (child, action) in generatedNode.get_next():
+                value, _ = self.Expectimax(child, depth - 1)
+                value -= 1
+                #if child.world.me(self):
+                #    value += self.dist((child.world.me(self).x, child.world.me(self).y), (self.x, self.y))
                 # print(f"depth {depth} action {child[1]} -> {value}")
                 if value > best_value:
                     best_value = value
-                    best_action = child[1]
+                    best_action = action
                     # print(depth, value, best_action)
             return best_value, best_action
         else:
             v = 0
-            for child in generatedNode.get_next():
-                p = child[1]
-                value, _ = self.Expectimax(child[0], depth)
+            for (child, p) in generatedNode.get_next():
+                value, _ = self.Expectimax(child, depth)
                 v = v + p * value
             return v, None
     

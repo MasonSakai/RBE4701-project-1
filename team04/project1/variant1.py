@@ -22,4 +22,4 @@ g.add_character(TestCharacter("me", # name
                               0, 0   # position
 ))
 
-g.go(0)
+g.go(1)
