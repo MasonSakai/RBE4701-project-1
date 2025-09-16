@@ -47,17 +47,17 @@ class TestCharacter(CharacterEntity):
             best_value = float('-inf')
             for child in generatedNode.get_next():
                 value, _ = self.Expectimax(child[0], depth - 1)
+                value += self.dist((child[0].world.me(self).x, child[0].world.me(self).y), (self.x, self.y))
                 if value > best_value:
                     best_value = value
                     best_action = child[1]
-                    print(depth, value, best_action)
+            #print(depth, value, best_action)
             return best_value, best_action
         else:
             v = 0
             for child in generatedNode.get_next():
                 p = child[1]
                 value, _ = self.Expectimax(child[0], depth)
-                # print(depth, v, p, value)
                 v = v + p * value
             return v, None
     
@@ -70,11 +70,10 @@ class TestCharacter(CharacterEntity):
         # print(self.tree.actors)
         depth_limit = 3
         value, best_action = self.Expectimax(self.tree, depth=depth_limit)
-        # print(value)
+        print(value, best_action)
         if isinstance(best_action, tuple):
             # print("Are you here?")
             self.move(best_action[0], best_action[1])
-            # return best_action
         elif best_action == True:
             self.place_bomb()
         else:
