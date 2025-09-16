@@ -20,20 +20,18 @@ class TestCharacter(CharacterEntity):
     
     def evaluate_state(self, node: WorldStateTree) -> float:
 
-        # goals = self.get_goals(node.world)
-        # player_pos = (node.world.me(self).x, node.world.me(self).y)
-        # distance = min(map(lambda p: self.dist(p, player_pos), goals))
         wrld = node.world
         me = wrld.me(self)
 
-        if me is None:
-            # print("I am penalizing dying!!!!")
-            return -1000  # huge penalty for dying
-
+        if node.character_event == True:
+            return 100
+        elif node.character_event == False:
+            return -1000
+        
          # Goal reached
-        pos = (me.x, me.y)
-        if pos in self.get_goals(wrld):
-            return 100  # highest value (win)
+        # pos = (me.x, me.y)
+        # if pos in self.get_goals(wrld):
+        #     return 100  # highest value (win)
         
         distance, _ = self.find_path(wrld)
         if distance == float("inf"):
@@ -115,7 +113,11 @@ class TestCharacter(CharacterEntity):
         me = generatedNode.world.me(self)
         # if me is None or (me.x, me.y) in self.get_goals(generatedNode.world) or depth == 0:
         #     return self.evaluate_state(generatedNode), None
-        if len(generatedNode.get_next()) == 0:
+        # print(generatedNode.character_event)
+        if generatedNode.character_event == True:
+            print("I'm giving a high cost")
+            return 100, None
+        if generatedNode.character_event == False:
             return -1000, None
         if depth == 0 or me is None or (me.x, me.y) in self.get_goals(generatedNode.world):
             return self.evaluate_state(generatedNode), None
@@ -124,19 +126,16 @@ class TestCharacter(CharacterEntity):
                 return self.evaluate_state(generatedNode), None
             best_value = float('-inf')
             for child in generatedNode.get_next():
-                state = child[0]
-                one_child = state.world.me(self)
-                if one_child is not None:
-                    value, _ = self.Expectimax(child[0], depth - 1)
-                    value += self.dist((child[0].world.me(self).x, child[0].world.me(self).y), (self.x, self.y))
-                else:
-                    goals = self.get_goals(state.world)
-                    if generatedNode.world.me(self) and (generatedNode.world.me(self).x, generatedNode.world.me(self).y) in goals:
-                        # print("I'm in this goals function")
-                        value += 100
-                    else:
-                        # print("Am I dead?")
-                        value -= 1000
+                # me_obj = child[0].world.me(self)
+                # if me_obj is None or me_obj.x is None:
+                #     generatedNode.character_event = True
+                # if generatedNode.character_event == True:
+                #     print("I'm giving a high cost")
+                #     return 100, None
+                # elif len(generatedNode.get_next()) == 0:
+                #     return -1000, None
+                value, _ = self.Expectimax(child[0], depth - 1)
+                value += self.dist((child[0].world.me(self).x, child[0].world.me(self).y), (self.x, self.y))
                 # print(f"depth {depth} action {child[1]} -> {value}")
                 if value > best_value:
                     best_value = value
