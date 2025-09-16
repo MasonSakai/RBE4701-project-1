@@ -11,12 +11,13 @@ sys.path.insert(1, '../team04')
 
 # Uncomment this if you want the empty test character
 from dlbfscharacter import DLDFSCharacter
+from testcharacter import TestCharacter
 
 # Create the game
 g = Game.fromfile('map.txt')
 
 # Uncomment this if you want the test character
-g.add_character(DLDFSCharacter("me", # name
+g.add_character(TestCharacter("me", # name
                               "C",   # avatar
                               0, 0   # position
 ))

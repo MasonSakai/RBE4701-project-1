@@ -7,59 +7,57 @@ from colorama import Fore, Back
 from worldstate import WorldStateTree
 from math import inf
 from sensed_world import SensedWorld
-
-def get_goals(self, wrld: SensedWorld) -> set[tuple[int, int]]:
-        """
-        Return a set of all goal positions (x, y) in the world.
-        """
-        goals = set()
-        for x in range(wrld.width()):
-            for y in range(wrld.height()):
-                if wrld.exit_at(x, y):   # check if this cell is a goal/exit
-                    goals.add((x, y))
-        return goals
-
-def evaluate_state(self, node: WorldStateTree) -> float:
-
-    goals = self.get_goals(node.world)
-    goal_pos = next(iter(goals))  
-    goal_x, goal_y = goal_pos
-
-    player_pos = (node.world.me(node.actor).x, node.world.me(node.actor).y)
-    player_x, player_y = player_pos 
-
-    distance = abs(player_x - goal_x) + abs(player_y - goal_y)
-
-    return -distance
+import math
 
 class TestCharacter(CharacterEntity):
-    # def __init__(self, name, avatar, x, y, actors: list[CharacterEntity | str | tuple[str, int]]):
-    #     CharacterEntity.__init__(self, name, avatar, x, y)
-    #     for i, actor in enumerate(actors):
-    #         if actor is None:
-    #             actors[i] = self
-    #     self.actors = actors
-        
-    # tree: WorldStateTree = None
+    tree: WorldStateTree = None
 # Function needs to stop at a certain depth on the tree. We pass in the tree and the required depth
+    def dist(self, a: tuple[int, int], b: tuple[int, int]) -> float:
+        dx = b[0] - a[0]
+        dy = b[1] - a[1]
+        return math.sqrt(dx * dx + dy * dy)
+    
+    def evaluate_state(self, node: WorldStateTree) -> float:
+
+        goals = self.get_goals(node.world)
+        player_pos = (node.world.me(self).x, node.world.me(self).y)
+        distance = min(map(lambda p: self.dist(p, player_pos), goals))
+
+        return -distance
+
+    def get_goals(self, wrld: SensedWorld) -> set[tuple[int, int]]:
+            """
+            Return a set of all goal positions (x, y) in the world.
+            """
+            goals = set()
+            for x in range(wrld.width()):
+                for y in range(wrld.height()):
+                    if wrld.exit_at(x, y): 
+                        goals.add((x, y))
+            return goals
+
     def Expectimax(self, generatedNode: WorldStateTree, depth=3):
-        if generatedNode is None:
-            return -inf
-        if depth == 0:
-            return evaluate_state(generatedNode)
-        if generatedNode.actor_turn == 0:
+        # if generatedNode is None:
+        #     return -inf, None
+        if len(generatedNode.get_next()) == 0:
+            return -1000, None
+        if generatedNode.is_player_turn():
+            if depth == 0:
+                return self.evaluate_state(generatedNode), None
             best_value = float('-inf')
             for child in generatedNode.get_next():
-                value = self.Expectimax(child[0], depth - 1)
+                value, _ = self.Expectimax(child[0], depth - 1)
                 if value > best_value:
                     best_value = value
                     best_action = child[1]
+                    print(depth, value, best_action)
             return best_value, best_action
         else:
             v = 0
             for child in generatedNode.get_next():
                 p = child[1]
-                value, _ = self.Expectimax(child[0], depth - 1)
+                value, _ = self.Expectimax(child[0], depth)
+                # print(depth, v, p, value)
                 v = v + p * value
             return v, None
     
@@ -69,14 +67,16 @@ class TestCharacter(CharacterEntity):
         if not self.tree:
             print("Tree Init")
             self.tree = WorldStateTree.CreateTree(self, wrld)
+        # print(self.tree.actors)
         depth_limit = 3
         value, best_action = self.Expectimax(self.tree, depth=depth_limit)
-
+        # print(value)
         if isinstance(best_action, tuple):
-            wrld.me(self).move(best_action[0], best_action[1])
-            return best_action
+            # print("Are you here?")
+            self.move(best_action[0], best_action[1])
+            # return best_action
         elif best_action == True:
-            wrld.me(self).place_bomb()
+            self.place_bomb()
         else:
             return None
 
