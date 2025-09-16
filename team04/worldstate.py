@@ -19,11 +19,10 @@ class WorldStateTree:
         Initilization of the search tree\n
         Requries the current world and the character
         """
-        actors = [ ]
+        actors = [ character ]
         for _, monsters in world.monsters.items():
             for monster in monsters:
                 actors.append([monster.name, 0.5, 0.5])
-        actors.append(character)
         tree = WorldStateTree(None, world, actors)
         return tree
 
@@ -47,7 +46,7 @@ class WorldStateTree:
                 (self.world, events) = self.world.next()
                 for event in events:
                     if isinstance(event, Event):
-                        if (event.tpe == Event.BOMB_HIT_CHARACTER and event.other.name == actors[-1].name) or (event.tpe == Event.CHARACTER_KILLED_BY_MONSTER and event.character.name == actors[-1].name):
+                        if (event.tpe == Event.BOMB_HIT_CHARACTER and event.other.name == actors[0].name) or (event.tpe == Event.CHARACTER_KILLED_BY_MONSTER and event.character.name == actors[0].name):
                             self.child_states = []
                             self.actors.pop(0)
                         elif event.tpe == Event.BOMB_HIT_MONSTER:
