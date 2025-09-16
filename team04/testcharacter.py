@@ -35,12 +35,26 @@ class TestCharacter(CharacterEntity):
                     if wrld.exit_at(x, y): 
                         goals.add((x, y))
             return goals
+    
+    def get_neighbors(self, wrld: SensedWorld, pos: tuple[int, int]) -> list[tuple[int, int]]:
+        neighbors = list()
+        for x in range(-1, 2, 1):
+            if pos[0] + x < 0 or pos[0] + x >= wrld.width():
+                continue
+            for y in range(-1, 2, 1):
+                if pos[1] + y < 0 or pos[1] + y >= wrld.height():
+                    continue
+                if wrld.empty_at(pos[0] + x, pos[1] + y) or wrld.exit_at(pos[0] + x, pos[1] + y):
+                    neighbors.append((pos[0] + x, pos[1] + y))
+        return neighbors
 
     def Expectimax(self, generatedNode: WorldStateTree, depth=3):
         # if generatedNode is None:
         #     return -inf, None
         if len(generatedNode.get_next()) == 0:
             return -1000, None
+        if depth == 0:
+            return self.evaluate_state(generatedNode), None
         if generatedNode.is_player_turn():
             if depth == 0:
                 return self.evaluate_state(generatedNode), None
@@ -57,7 +71,11 @@ class TestCharacter(CharacterEntity):
             v = 0
             for child in generatedNode.get_next():
                 p = child[1]
+<<<<<<< Updated upstream
                 value, _ = self.Expectimax(child[0], depth)
+=======
+                value, _ = self.Expectimax(child[0], depth-1)
+>>>>>>> Stashed changes
                 v = v + p * value
             return v, None
     
@@ -72,7 +90,6 @@ class TestCharacter(CharacterEntity):
         value, best_action = self.Expectimax(self.tree, depth=depth_limit)
         print(value, best_action)
         if isinstance(best_action, tuple):
-            # print("Are you here?")
             self.move(best_action[0], best_action[1])
         elif best_action == True:
             self.place_bomb()

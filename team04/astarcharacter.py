@@ -44,7 +44,7 @@ class AStarCharacter(CharacterEntity):
 
         queue = PriorityQueue()
         came_from = dict()
-        cost_so_far = { start_pos: 0 }
+        cost_so_far = { start_pos: 0 } #Output whatever gets saved, can replace the distance that we're using in the utility function
 
         goals = self.get_goals(wrld)
         found_goal = None
@@ -53,16 +53,16 @@ class AStarCharacter(CharacterEntity):
 
         while not queue.empty():
             (_, pos) = queue.get(False)
-            if pos in goals:
-                print("goal:", pos)
-                found_goal = pos
-                break
+            # if pos in goals:
+            #     print("goal:", pos)
+            #     found_goal = pos
+            #     break
             neighbors = self.get_neighbors(wrld, pos)
             for neighbor in neighbors:
                 new_cost = cost_so_far[pos] + 1
                 if neighbor not in cost_so_far or new_cost < cost_so_far[neighbor]:
                     cost_so_far[neighbor] = new_cost
-                    priority = new_cost + min(map(lambda p: self.dist(p, neighbor), goals))
+                    priority = new_cost + min(map(lambda p: self.dist(p, neighbor), goals)) #Either remove the heurisitc or change it to tend towards the player
                     queue.put((priority, neighbor))
                     came_from[neighbor] = pos
 
@@ -77,6 +77,7 @@ class AStarCharacter(CharacterEntity):
 
         print(path)
         self.path = path
+        # Save cost so far and came from to find the next best step
         return True
 
 
