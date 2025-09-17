@@ -17,20 +17,32 @@ class TestCharacter(CharacterEntity):
         dx = b[0] - a[0]
         dy = b[1] - a[1]
         return math.sqrt(dx * dx + dy * dy)
-    
+
+    def find_monster(self, wrld: SensedWorld):
+       monster_positions = []
+
+    # Loop over the whole board
+       for m_x in range(wrld.width()):
+        for m_y in range(wrld.height()):
+            monsters = wrld.monsters_at(m_x,m_y)
+            if monsters:
+                monster_positions.append((m_x, m_y))
+
+       return monster_positions
+
     def evaluate_state(self, node: WorldStateTree) -> float:
 
         wrld = node.world
         me = wrld.me(self)
-        
-         # Goal reached
-        # pos = (me.x, me.y)
-        # if pos in self.get_goals(wrld):
-        #     return 100  # highest value (win)
-        
+        monsters=self.find_monster(wrld)
         distance, _ = self.find_path(wrld)
+
+        for m_x, m_y in monsters:
+          if max(abs(me.x - m_x), abs(me.y - m_y)) <= 1:
+              return -1000     
+          
         if distance == float("inf"):
-            return -1000
+              return -1000
         # print(-distance)
         return -distance
 
@@ -102,38 +114,10 @@ class TestCharacter(CharacterEntity):
         return cost_so_far[found_goal], first_step
 
 
-    # def Expectimax(self, generatedNode: WorldStateTree, depth=3):
-    #     if generatedNode.character_event == True:
-    #         print("I'm giving a high cost", depth)
-    #         return 100, None
-    #     elif generatedNode.character_event == False:
-    #         return -1000, None
-    #     if depth == 0:
-    #         return self.evaluate_state(generatedNode), None
-    #     if generatedNode.is_player_turn():
-    #         best_value = float('-inf')
-    #         for (child, action) in generatedNode.get_next():
-    #             value, _ = self.Expectimax(child, depth - 1)
-    #             value -= 1
-    #             #if child.world.me(self):
-    #             #    value += self.dist((child.world.me(self).x, child.world.me(self).y), (self.x, self.y))
-    #             # print(f"depth {depth} action {child[1]} -> {value}")
-    #             if value > best_value:
-    #                 best_value = value
-    #                 best_action = action
-    #                 # print(depth, value, best_action)
-    #         return best_value, best_action
-    #     else:
-    #         v = 0
-    #         for (child, p) in generatedNode.get_next():
-    #             value, _ = self.Expectimax(child, depth)
-    #             v = v + p * value
-    #         return v, None
-
     def Expectimax(self, generatedNode: WorldStateTree, depth=3, alpha=-1000, beta=100):
         # Handle character events first
         if generatedNode.character_event == True:
-            print("I'm giving a high cost", depth)
+            # print("I'm giving a high cost", depth)
             return 100, None
         elif generatedNode.character_event == False:
             return -1000, None
@@ -171,7 +155,6 @@ class TestCharacter(CharacterEntity):
                     print(sum(map(lambda p: p[1], generatedNode.get_next())))
                     raise Exception("probability sum error")
                 if v_i < alpha:
-                    #print("Monst branch pruned", alpha, beta, v, 1 - p_i, v_i)
                     return v_i, None
                 beta = min(beta, v_i)
             return v, None
@@ -187,10 +170,8 @@ class TestCharacter(CharacterEntity):
         if not self.tree:
             print("Tree Init")
             self.tree = WorldStateTree.CreateTree(self, wrld)
-        # print(self.tree.actors)
         depth_limit = 4
         value, best_action = self.Expectimax(self.tree, depth=depth_limit)
-        # print("/n")
         print(value, best_action)
         if isinstance(best_action, tuple):
             self.move(best_action[0], best_action[1])
