@@ -49,7 +49,7 @@ class WorldStateTree:
                 (self.world, events) = self.world.next()
                 for event in events:
                     if isinstance(event, Event):
-                        if (event.tpe == Event.BOMB_HIT_CHARACTER and event.other.name == actors[0].name) or ((event.tpe == Event.CHARACTER_KILLED_BY_MONSTER or event.tpe == Event.CHARACTER_FOUND_EXIT) and event.character.name == actors[0].name):
+                        if isinstance(actors[0], CharacterEntity) and ((event.tpe == Event.BOMB_HIT_CHARACTER and event.other.name == actors[0].name) or ((event.tpe == Event.CHARACTER_KILLED_BY_MONSTER or event.tpe == Event.CHARACTER_FOUND_EXIT) and event.character.name == actors[0].name)):
                             self.character_event = event.tpe == Event.CHARACTER_FOUND_EXIT
                             self.child_states = []
                             self.actors.pop(0)
