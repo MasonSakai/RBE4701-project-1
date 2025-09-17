@@ -151,26 +151,39 @@ class TestCharacter(CharacterEntity):
                     best_value = value
                     best_action = action
                 if best_value >= beta:
-                    print("Branch pruned")
+                    #print("Playr branch pruned", alpha, beta, best_value)
                     return best_value, best_action
                 alpha = max(alpha, best_value)
             return best_value, best_action
 
         else:
             v = 0
+            p_i = 1
+            v_i = 0
             for (child, p) in generatedNode.get_next():
                 value, _ = self.Expectimax(child, depth-1, alpha, beta)
                 v += p * value
-                if v >= beta:
-                    return v, None
+                p_i -= p
+                v_i = v + p_i * beta
+                if (p_i < -1e-5):
+                    print(p_i)
+                    print(generatedNode.get_next(True))
+                    print(sum(map(lambda p: p[1], generatedNode.get_next())))
+                    raise Exception("probability sum error")
+                if v_i < alpha:
+                    #print("Monst branch pruned", alpha, beta, v, 1 - p_i, v_i)
+                    return v_i, None
+                beta = min(beta, v_i)
             return v, None
 
 
     
     def do(self, wrld):
         if self.tree:
+            self.tree.fill_single_step()
             self.tree = self.tree.get_progressed_state(wrld)
-            # self.tree.prune_parents()
+            if self.tree:
+                self.tree.prune_parents()
         if not self.tree:
             print("Tree Init")
             self.tree = WorldStateTree.CreateTree(self, wrld)
