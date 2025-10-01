@@ -12,6 +12,12 @@ from queue import PriorityQueue
 
 class QLearningCharacter(CharacterEntity):
     tree: WorldStateTree = None
+    w_goal: float = 0
+    w_stupid: float = 0
+    w_smart: float = 0
+
+    
+
 # Function needs to stop at a certain depth on the tree. We pass in the tree and the required depth
     def dist(self, a: tuple[int, int], b: tuple[int, int]) -> float:
         dx = b[0] - a[0]
