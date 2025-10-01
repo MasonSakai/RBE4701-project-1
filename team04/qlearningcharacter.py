@@ -31,6 +31,7 @@ class QLearningCharacter(CharacterEntity):
             print("Failed to read weights:", e)
             
         self.weight_file = open("QLearningWeights.txt", 'w') # opened here due to garbage collection, no try-except because we don't want to proceed if this fails
+        # This does clear the file for the lifetime of the character. It should be written to at the end no matter what, but I'm still a bit worried about that
     
     def __del__(self):
         try: # Save weights to file
