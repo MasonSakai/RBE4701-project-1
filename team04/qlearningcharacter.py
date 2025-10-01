@@ -1,4 +1,5 @@
 # This is necessary to find the main code
+from io import TextIOWrapper
 import sys
 sys.path.insert(0, '../bomberman')
 # Import necessary stuff
@@ -15,10 +16,36 @@ class QLearningCharacter(CharacterEntity):
     w_goal: float = 0
     w_stupid: float = 0
     w_smart: float = 0
+    weight_file: TextIOWrapper = None
+
+    def __init__(self, name, avatar, x, y): #, recording_file_idents: list[str]
+        super().__init__(name, avatar, x, y)
+        
+        try: # Load weights from file
+            with open("QLearningWeights.txt", 'r') as wfile:
+                self.w_goal = float(wfile.readline())
+                self.w_stupid = float(wfile.readline())
+                self.w_smart = float(wfile.readline())
+            print("Loaded weights: ", self.w_goal, ", ", self.w_stupid, ", ", self.w_smart, sep='')
+        except Exception as e:
+            print("Failed to read weights:", e)
+            
+        self.weight_file = open("QLearningWeights.txt", 'w') # opened here due to garbage collection, no try-except because we don't want to proceed if this fails
+    
+    def __del__(self):
+        try: # Save weights to file
+            self.weight_file.writelines([
+                str(self.w_goal), '\n',
+                str(self.w_stupid), '\n',
+                str(self.w_smart)
+            ])
+            self.weight_file.close()
+            print("Successfully saved weights")
+        except Exception as e:
+            print("Failed to write weights:", e)
 
     
 
-# Function needs to stop at a certain depth on the tree. We pass in the tree and the required depth
     def dist(self, a: tuple[int, int], b: tuple[int, int]) -> float:
         dx = b[0] - a[0]
         dy = b[1] - a[1]
@@ -120,6 +147,7 @@ class QLearningCharacter(CharacterEntity):
         return cost_so_far[found_goal], first_step
 
 
+# Function needs to stop at a certain depth on the tree. We pass in the tree and the required depth
     def Expectimax(self, generatedNode: WorldStateTree, depth=3, alpha=-1000, beta=100):
         # Handle character events first
         if generatedNode.character_event == True:
