@@ -6,6 +6,8 @@ from sensed_world import SensedWorld
 from entity import CharacterEntity, MonsterEntity, AIEntity, MovableEntity, PositionalEntity, TimedEntity, OwnedEntity, __sign__
 from events import Event
 
+#initial commit
+
 class WorldStateTree:
     world: SensedWorld
     actor_turn: int
@@ -13,6 +15,7 @@ class WorldStateTree:
     parent_state: 'WorldStateTree'
     child_states: list[tuple['WorldStateTree', float | tuple[int, int] | bool]]
     state_value = None
+    character_event: bool | None = None
 
     def CreateTree(character: CharacterEntity, world: World):
         """
@@ -46,7 +49,8 @@ class WorldStateTree:
                 (self.world, events) = self.world.next()
                 for event in events:
                     if isinstance(event, Event):
-                        if (event.tpe == Event.BOMB_HIT_CHARACTER and event.other.name == actors[0].name) or (event.tpe == Event.CHARACTER_KILLED_BY_MONSTER and event.character.name == actors[0].name):
+                        if isinstance(actors[0], CharacterEntity) and ((event.tpe == Event.BOMB_HIT_CHARACTER and event.other.name == actors[0].name) or ((event.tpe == Event.CHARACTER_KILLED_BY_MONSTER or event.tpe == Event.CHARACTER_FOUND_EXIT) and event.character.name == actors[0].name)):
+                            self.character_event = event.tpe == Event.CHARACTER_FOUND_EXIT
                             self.child_states = []
                             self.actors.pop(0)
                         elif event.tpe == Event.BOMB_HIT_MONSTER:
@@ -128,12 +132,12 @@ class WorldStateTree:
                     return monster
         return None
 
-    def get_next(self) -> list[tuple['WorldStateTree', float | tuple[int, int] | bool]]:
+    def get_next(self, verbose_probs: bool = False) -> list[tuple['WorldStateTree', float | tuple[int, int] | bool]]:
         """
         Gets the child nodes to this world state\n
         Will calculate only when first called, set child_states to None to recalculate 
         """
-        if self.has_children():
+        if not verbose_probs and self.has_children():
             return self.child_states
         
         self.child_states = []
@@ -155,6 +159,7 @@ class WorldStateTree:
             return self.child_states
 
         else:
+            if verbose_probs: print("Starting get_next with verbose probabilities")
             (mname, p_smart, p_r2) = actor
             monster: MonsterEntity = WorldStateTree.get_monster_with_name(self.world, mname)
             neighbors = self.random_monster_neighbors(monster.x, monster.y)
@@ -163,18 +168,24 @@ class WorldStateTree:
             (has_t1, dx_t1, dy_t1) = self.look_for_character(monster.x, monster.y, 1)
             smart_change = self.must_change_direction(monster)
 
+            if verbose_probs: print(actor, len(neighbors), len(safe_neighbors), has_t1, has_t2, smart_change)
+
             for (dx, dy) in neighbors:
                 actors_data = self.actors.copy()
+                if verbose_probs: print((dx, dy))
 
                 p = 0
                 p_r = 1 / len(neighbors)
+                if verbose_probs: print("p_r init", p_r)
                 
                 if p_smart == 0: # Purely random
                     p = p_r
+                    if verbose_probs: print("no smart", p)
                 else: # mix of smart and random
                     is_natural = dx == monster.dx and dy == monster.dy
                     p_s = 0
                     p_sr = 1 / len(safe_neighbors)
+                    if verbose_probs: print("smart init:", p_sr, is_natural)
 
                     np_smart = p_smart
                     np_r2 = p_r2
@@ -190,10 +201,10 @@ class WorldStateTree:
                             if has_t1: # decrease probability of range 2
                                 np_r2 = np_r2 / 1.1
                     
-                    elif smart_change or (dx == 0 and dy == 0): # random safe
+                    elif smart_change or (monster.dx == 0 and monster.dy == 0): # random safe
                         if any(map(lambda p: p[0] == dx and p[1] == dy, safe_neighbors)): # is a safe neighbor
                             p_s = p_sr
-                        else: # stuck
+                        elif len(safe_neighbors) == 0: # stuck
                             p_s = 1 if (dx == 0 and dy == 0) else 0
 
                     else: # natural movement
@@ -203,17 +214,30 @@ class WorldStateTree:
                     
 
                     p = p_r * (1 - p_smart) + p_s * p_smart
+                    if verbose_probs: print("smart p:", p_r, p_s, p_smart, p)
                     actors_data[self.actor_turn] = (mname, np_smart, np_r2)
                 
+                if verbose_probs: print("Final p:", p)
                 if p == 0:
                     continue
                 n_world = SensedWorld.from_world(self.world)
                 WorldStateTree.get_monster_with_name(n_world, mname).move(dx, dy)
                 self.child_states.append((WorldStateTree(self, n_world, actors_data), p))
         
-            self.child_states = list(sorted(self.child_states, key=lambda s: s[1]))
+            self.child_states = list(sorted(self.child_states, key=lambda s: s[1], reverse=True))
             return self.child_states
     
+    def prune_parents(self):
+        """
+        Will remove all other children of the parent state\n
+        Is called recursively upwards
+        """
+        if not self.parent_state:
+            return
+
+        del self.parent_state.child_states
+        self.parent_state.child_states = [ self ]
+        self.parent_state.prune_parents()
 
 
     def fill_single_step(self):
