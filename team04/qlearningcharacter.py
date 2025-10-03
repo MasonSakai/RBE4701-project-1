@@ -18,7 +18,7 @@ class QLearningCharacter(CharacterEntity):
     w_smart: float = 0
     weight_file: TextIOWrapper = None
 
-    def __init__(self, name, avatar, x, y):
+    def __init__(self, name, avatar, x, y): #, recording_file_idents: list[str]
         super().__init__(name, avatar, x, y)
         
         try: # Load weights from file
@@ -68,17 +68,36 @@ class QLearningCharacter(CharacterEntity):
 
         wrld = node.world
         me = wrld.me(self)
-        monsters=self.find_monster(wrld)
-        distance, _ = self.find_path(wrld)
 
-        for m_x, m_y in monsters:
-          if max(abs(me.x - m_x), abs(me.y - m_y)) <= 1:
-              return -1000     
-          
-        if distance == float("inf"):
-              return -1000
-        # print(-distance)
-        return -distance
+        dist_goal, _ = self.find_path(wrld)          
+        goal_x, goal_y = wrld.exitcell 
+        me_x, me_y = me.x, me.y
+        if dist_goal == float("inf"):
+            dist_goal = max(abs(goal_x - me_x), abs(goal_y - me_y))
+        goal_feat = -dist_goal
+
+        monsters = self.find_monster(wrld)
+        max_range = max(wrld.width(), wrld.height(), 1)
+
+        monster_component = 0.0
+        feature_m_stupid = 0.0 
+        feature_m_smart = 0.0 
+
+        for (m_x, m_y) in monsters:
+            dx = m_x - me.x
+            dy = m_y - me.y
+            dist_m = math.sqrt(dx * dx + dy * dy)
+            p_smart = max(0.0, 1.0 - (dist_m / max_range))
+            neg_dist_m = -dist_m
+            
+            feature_m_stupid += (1.0 - p_smart) * neg_dist_m
+            feature_m_smart += p_smart * neg_dist_m
+
+        monster_component = self.w_stupid * feature_m_stupid + self.w_smart * feature_m_smart
+
+        q_value = (self.w_goal * goal_feat) + monster_component
+        
+        return q_value
 
     def get_goals(self, wrld: SensedWorld) -> set[tuple[int, int]]:
             """
@@ -198,72 +217,15 @@ class QLearningCharacter(CharacterEntity):
         wrld = node.world
         me = wrld.me(self)
 
-        dist_goal, _ = self.find_path(wrld)          
-        goal_x, goal_y = wrld.exitcell 
-        me_x, me_y = me.x, me.y
-        if dist_goal == float("inf"):
-            dist_goal = max(abs(goal_x - me_x), abs(goal_y - me_y))
-        goal_feat = -dist_goal
-
-        monsters = self.find_monster(wrld)
-        max_range = max(wrld.width(), wrld.height(), 1)
-
-        monster_component = 0.0
-        feature_m_stupid = 0.0 
-        feature_m_smart = 0.0 
-
-        for (m_x, m_y) in monsters:
-            dx = m_x - me.x
-            dy = m_y - me.y
-            dist_m = math.sqrt(dx * dx + dy * dy)
-            p_smart = max(0.0, 1.0 - (dist_m / max_range))
-            neg_dist_m = -dist_m
-            
-            feature_m_stupid += (1.0 - p_smart) * neg_dist_m
-            feature_m_smart += p_smart * neg_dist_m
-
-        monster_component = self.w_stupid * feature_m_stupid + self.w_smart * feature_m_smart
-
-        q_value = (self.w_goal * goal_feat) + monster_component
+        q_value = self.evaluate_state(node)
 
         best_future_q = -float("inf")
         next_nodes = node.fill_next_step()
-        if not next_nodes:
+        if len(next_nodes) == 0:
             best_future_q = 0.0
         else:
             for (child, _) in next_nodes:
-                wrld_next = child.world
-                me_next = wrld_next.me(self)
-                dist_goal_n, _ = self.find_path(wrld_next)
-                if dist_goal_n == float("inf"):
-                    goal_feat_n = -1000.0
-                    t_n = 0.0
-                else:
-                    goal_feat_n = -dist_goal_n
-                    t_n = 1.0 / (1.0 + dist_goal_n)
-
-                monsters_n = []
-                for mx in range(wrld_next.width()):
-                    for my in range(wrld_next.height()):
-                        if wrld_next.monsters_at(mx, my):
-                            monsters_n.append((mx, my))
-
-                max_range_n = max(wrld_next.width(), wrld_next.height(), 1)
-                feature_m_stupid_n = 0.0
-                feature_m_smart_n = 0.0
-                for (m_x, m_y) in monsters_n:
-                    dx = m_x - me_next.x
-                    dy = m_y - me_next.y
-                    dist_mn = math.sqrt(dx * dx + dy * dy)
-                    p_smart_n = max(0.0, 1.0 - (dist_mn / max_range_n))
-                    neg_dist_mn = -dist_mn
-                    feature_m_stupid_n += (1.0 - p_smart_n) * neg_dist_mn
-                    feature_m_smart_n += p_smart_n * neg_dist_mn
-
-                monster_component_n = (self.w_stupid * feature_m_stupid_n +
-                                       self.w_smart * feature_m_smart_n)
-
-                q_next = (self.w_goal * (t_n * goal_feat_n)) + ((1.0 - t_n) * monster_component_n)
+                q_next = self.evaluate_state(child)
                 if q_next > best_future_q:
                     best_future_q = q_next
 
@@ -308,6 +270,3 @@ class QLearningCharacter(CharacterEntity):
             self.place_bomb()
         else:
             return None
-        
-        def done(self, wrld):
-            pass
