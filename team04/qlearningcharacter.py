@@ -194,6 +194,89 @@ class QLearningCharacter(CharacterEntity):
                 beta = min(beta, v_i)
             return v, None
 
+    def q_learning_update(self, node: WorldStateTree, reward: float, alpha=0.5, gamma=0.9):
+        wrld = node.world
+        me = wrld.me(self)
+
+        dist_goal, _ = self.find_path(wrld)          
+        goal_x, goal_y = wrld.exitcell 
+        me_x, me_y = me.x, me.y
+        if dist_goal == float("inf"):
+            dist_goal = max(abs(goal_x - me_x), abs(goal_y - me_y))
+        goal_feat = -dist_goal
+
+        monsters = self.find_monster(wrld)
+        max_range = max(wrld.width(), wrld.height(), 1)
+
+        monster_component = 0.0
+        feature_m_stupid = 0.0 
+        feature_m_smart = 0.0 
+
+        for (m_x, m_y) in monsters:
+            dx = m_x - me.x
+            dy = m_y - me.y
+            dist_m = math.sqrt(dx * dx + dy * dy)
+            p_smart = max(0.0, 1.0 - (dist_m / max_range))
+            neg_dist_m = -dist_m
+            
+            feature_m_stupid += (1.0 - p_smart) * neg_dist_m
+            feature_m_smart += p_smart * neg_dist_m
+
+        monster_component = self.w_stupid * feature_m_stupid + self.w_smart * feature_m_smart
+
+        q_value = (self.w_goal * goal_feat) + monster_component
+
+        best_future_q = -float("inf")
+        next_nodes = node.fill_next_step()
+        if not next_nodes:
+            best_future_q = 0.0
+        else:
+            for (child, _) in next_nodes:
+                wrld_next = child.world
+                me_next = wrld_next.me(self)
+                dist_goal_n, _ = self.find_path(wrld_next)
+                if dist_goal_n == float("inf"):
+                    goal_feat_n = -1000.0
+                    t_n = 0.0
+                else:
+                    goal_feat_n = -dist_goal_n
+                    t_n = 1.0 / (1.0 + dist_goal_n)
+
+                monsters_n = []
+                for mx in range(wrld_next.width()):
+                    for my in range(wrld_next.height()):
+                        if wrld_next.monsters_at(mx, my):
+                            monsters_n.append((mx, my))
+
+                max_range_n = max(wrld_next.width(), wrld_next.height(), 1)
+                feature_m_stupid_n = 0.0
+                feature_m_smart_n = 0.0
+                for (m_x, m_y) in monsters_n:
+                    dx = m_x - me_next.x
+                    dy = m_y - me_next.y
+                    dist_mn = math.sqrt(dx * dx + dy * dy)
+                    p_smart_n = max(0.0, 1.0 - (dist_mn / max_range_n))
+                    neg_dist_mn = -dist_mn
+                    feature_m_stupid_n += (1.0 - p_smart_n) * neg_dist_mn
+                    feature_m_smart_n += p_smart_n * neg_dist_mn
+
+                monster_component_n = (self.w_stupid * feature_m_stupid_n +
+                                       self.w_smart * feature_m_smart_n)
+
+                q_next = (self.w_goal * (t_n * goal_feat_n)) + ((1.0 - t_n) * monster_component_n)
+                if q_next > best_future_q:
+                    best_future_q = q_next
+
+        if best_future_q == -float("inf"):
+            best_future_q = 0.0
+
+        delta = (reward + gamma * best_future_q) - q_value
+
+        new_w_goal = self.w_goal + alpha * delta * goal_feat
+        new_w_stupid = self.w_stupid + alpha * delta * feature_m_stupid
+        new_w_smart = self.w_smart + alpha * delta * feature_m_smart
+
+        return new_w_goal, new_w_stupid, new_w_smart
 
     
     def do(self, wrld):
@@ -207,7 +290,18 @@ class QLearningCharacter(CharacterEntity):
             self.tree = WorldStateTree.CreateTree(self, wrld)
         depth_limit = 4
         value, best_action = self.Expectimax(self.tree, depth=depth_limit)
-        print(value, best_action)
+        # print(value, best_action)
+        reward = 0
+        me = wrld.me(self)
+        if wrld.exit_at(me.x, me.y): 
+            reward = 100
+        else:
+            reward = value 
+
+        candidate_weights = self.q_learning_update(self.tree, reward)
+        print(candidate_weights)
+
+        self.w_goal, self.w_stupid, self.w_smart = candidate_weights
         if isinstance(best_action, tuple):
             self.move(best_action[0], best_action[1])
         elif best_action == True:
