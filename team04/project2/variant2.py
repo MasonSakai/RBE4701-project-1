@@ -13,7 +13,7 @@ sys.path.insert(1, '../team04')
 from qlearningcharacter import QLearningCharacter
 
 # Create the game
-random.seed(113) # TODO Change this if you want different random choices
+random.seed(123) # TODO Change this if you want different random choices
 g = Game.fromfile('map.txt')
 g.add_monster(StupidMonster("stupid", # name
                             "S",      # avatar
@@ -22,9 +22,9 @@ g.add_monster(StupidMonster("stupid", # name
 
 # TODO Add your character
 g.add_character(QLearningCharacter("me", # name
-                               "C",  # avatar
-                               0, 0  # position
+                              "C",  # avatar
+                              0, 0  # position
 ))
 
 # Run!
-g.go(1)
+g.go()

@@ -17,7 +17,7 @@ random.seed(123) # TODO Change this if you want different random choices
 g = Game.fromfile('map.txt')
 g.add_monster(SelfPreservingMonster("aggressive", # name
                                     "A",          # avatar
-                                    7, 13,        # position
+                                    3, 13,        # position
                                     2             # detection range
 ))
 
@@ -28,4 +28,4 @@ g.add_character(QLearningCharacter("me", # name
 ))
 
 # Run!
-g.go(1)
+g.go()

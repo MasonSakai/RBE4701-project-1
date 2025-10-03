@@ -18,7 +18,7 @@ class QLearningCharacter(CharacterEntity):
     w_smart: float = 0
     weight_file: TextIOWrapper = None
 
-    def __init__(self, name, avatar, x, y): #, recording_file_idents: list[str]
+    def __init__(self, name, avatar, x, y):
         super().__init__(name, avatar, x, y)
         
         try: # Load weights from file
@@ -308,3 +308,6 @@ class QLearningCharacter(CharacterEntity):
             self.place_bomb()
         else:
             return None
+        
+        def done(self, wrld):
+            pass

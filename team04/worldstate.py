@@ -3,7 +3,7 @@ from typing import Any
 sys.path.insert(0, '../bomberman')
 from world import World
 from sensed_world import SensedWorld
-from entity import CharacterEntity, MonsterEntity, AIEntity, MovableEntity, PositionalEntity, TimedEntity, OwnedEntity, __sign__
+from entity import BombEntity, CharacterEntity, MonsterEntity, AIEntity, MovableEntity, PositionalEntity, TimedEntity, OwnedEntity, __sign__
 from events import Event
 
 #initial commit
@@ -116,14 +116,14 @@ class WorldStateTree:
                             return (True, dx, dy)
         # Nothing found
         return (False, 0, 0)
-    def find_bomb(self, player: CharacterEntity) -> bool:
+    def find_bomb(self, player: CharacterEntity) -> BombEntity:
         """
         Will attempt to find a bomb owned by a player
         """
         for bomb in self.world.bombs.values():
             if not bomb.expired() and (player is None or bomb.owner.name == player.name):
-                return True
-        return False
+                return bomb
+        return None
 
     def get_monster_with_name(world: World, name: str) -> MonsterEntity:
         for _, monsters in world.monsters.items():
@@ -151,7 +151,7 @@ class WorldStateTree:
                 n_world.me(actor).move(dx, dy)
                 self.child_states.append((WorldStateTree(self, n_world, self.actors.copy()), (dx, dy)))
 
-            if not self.find_bomb(player):
+            if self.find_bomb(player) is not None:
                 n_world = SensedWorld.from_world(self.world)
                 n_world.me(actor).place_bomb()
                 self.child_states.append((WorldStateTree(self, n_world, self.actors.copy()), True))
@@ -240,15 +240,20 @@ class WorldStateTree:
         self.parent_state.prune_parents()
 
 
-    def fill_single_step(self):
+    def fill_single_step(self) -> list['WorldStateTree']:
         """
         Fills the world state tree via DFS until the next run state
         """
+        children = []
         stack = self.get_next().copy()
         while len(stack) > 0:
             state = stack.pop()[0]
-            if not state.is_run_state():
+            if state.is_run_state():
+                children.append(state)
+            else:
                 stack.extend(state.get_next())
+        
+        return children
 
     
     def check_timed_entities(listA: dict[Any, PositionalEntity | TimedEntity | OwnedEntity], listB: dict[Any, PositionalEntity | TimedEntity | OwnedEntity]) -> bool:

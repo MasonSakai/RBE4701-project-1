@@ -22,8 +22,8 @@ g.add_monster(StupidMonster("stupid", # name
 ))
 g.add_monster(SelfPreservingMonster("aggressive", # name
                                     "A",          # avatar
-                                    7, 13,        # position
-                                    1             # detection range
+                                    3, 13,        # position
+                                    2             # detection range
 ))
 
 # TODO Add your character
@@ -33,4 +33,4 @@ g.add_character(QLearningCharacter("me", # name
 ))
 
 # Run!
-g.go(1)
+g.go()
