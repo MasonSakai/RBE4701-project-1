@@ -16,6 +16,8 @@ class QLearningCharacter(CharacterEntity):
     w_goal: float = 0
     w_stupid: float = 0
     w_smart: float = 0
+    w_bomb_danger: float = 0
+    w_bomb_potential: float = 0
     weight_file: TextIOWrapper = None
 
     def __init__(self, name, avatar, x, y): #, recording_file_idents: list[str]
@@ -26,7 +28,9 @@ class QLearningCharacter(CharacterEntity):
                 self.w_goal = float(wfile.readline())
                 self.w_stupid = float(wfile.readline())
                 self.w_smart = float(wfile.readline())
-            print("Loaded weights: ", self.w_goal, ", ", self.w_stupid, ", ", self.w_smart, sep='')
+                self.w_bomb_danger = float(wfile.readline())
+                self.w_bomb_potential = float(wfile.readline())
+            print("Loaded weights: ", self.w_goal, ", ", self.w_stupid, ", ", self.w_smart, ", ", self.w_bomb_danger, ", ", self.w_bomb_potential, sep='')
         except Exception as e:
             print("Failed to read weights:", e)
             
@@ -38,7 +42,9 @@ class QLearningCharacter(CharacterEntity):
             self.weight_file.writelines([
                 str(self.w_goal), '\n',
                 str(self.w_stupid), '\n',
-                str(self.w_smart)
+                str(self.w_smart), '\n',
+                str(self.w_bomb_danger), '\n', 
+                str(self.w_bomb_potential)   
             ])
             self.weight_file.close()
             print("Successfully saved weights")
@@ -63,6 +69,40 @@ class QLearningCharacter(CharacterEntity):
                 monster_positions.append((m_x, m_y))
 
        return monster_positions
+    
+    def calculate_bomb_danger(self, wrld: SensedWorld, me: CharacterEntity) -> float:
+        """
+        Calculates the danger feature based on the agent's proximity to active bombs.
+        The feature is more negative the closer the agent is to a bomb.
+        """
+        feat_bomb_danger = 0.0
+        all_bombs = wrld.bombs.values()
+        if all_bombs:
+            min_dist_to_bomb = float('inf')
+            for bomb in all_bombs:
+                dist_b = self.dist((me.x, me.y), (bomb.x, bomb.y))
+                if dist_b < min_dist_to_bomb:
+                    min_dist_to_bomb = dist_b
+            # Use inverse distance as a penalty. The +1 prevents division by zero.
+            feat_bomb_danger = -1.0 / (min_dist_to_bomb + 1.0)
+        return feat_bomb_danger
+
+    def calculate_bomb_potential(self, node: WorldStateTree, me: CharacterEntity, dist_goal: float) -> float:
+        wrld = node.world
+        goal_pos = wrld.exitcell
+
+        if dist_goal != float("inf"):
+            return 0.0
+
+        # If no bombs are on the field and if a goal exists
+        if node.find_bomb(me) is None and goal_pos:
+            wall_to_check_x, wall_to_check_y = me.x, me.y + 1
+            if 0 <= wall_to_check_x < wrld.width() and 0 <= wall_to_check_y < wrld.height() and wrld.wall_at(wall_to_check_x, wall_to_check_y):
+                dist_me_to_goal = self.dist((me.x, me.y), goal_pos)
+                dist_wall_to_goal = self.dist((wall_to_check_x, wall_to_check_y), goal_pos)
+                if dist_wall_to_goal < dist_me_to_goal:
+                    return 10
+        return 0.0
 
     def evaluate_state(self, node: WorldStateTree) -> float:
 
@@ -95,7 +135,10 @@ class QLearningCharacter(CharacterEntity):
 
         monster_component = self.w_stupid * feature_m_stupid + self.w_smart * feature_m_smart
 
-        q_value = (self.w_goal * goal_feat) + monster_component
+        feat_bomb_danger = self.calculate_bomb_danger(wrld, me)
+        feat_bomb_potential = self.calculate_bomb_potential(node, me, dist_goal)
+
+        q_value = (self.w_goal * goal_feat) + monster_component + self.w_bomb_danger * feat_bomb_danger + self.w_bomb_potential * feat_bomb_potential 
         
         return q_value
 
@@ -220,11 +263,11 @@ class QLearningCharacter(CharacterEntity):
         q_value = self.evaluate_state(node)
 
         best_future_q = -float("inf")
-        next_nodes = node.fill_next_step()
+        next_nodes = node.fill_single_step()
         if len(next_nodes) == 0:
             best_future_q = 0.0
         else:
-            for (child, _) in next_nodes:
+            for child in next_nodes:
                 q_next = self.evaluate_state(child)
                 if q_next > best_future_q:
                     best_future_q = q_next
@@ -233,10 +276,13 @@ class QLearningCharacter(CharacterEntity):
             best_future_q = 0.0
 
         delta = (reward + gamma * best_future_q) - q_value
+        new_w_goal, new_w_stupid, new_w_smart, new_w_bomb_danger, new_w_bomb_potential = 0
 
-        new_w_goal = self.w_goal + alpha * delta * goal_feat
-        new_w_stupid = self.w_stupid + alpha * delta * feature_m_stupid
-        new_w_smart = self.w_smart + alpha * delta * feature_m_smart
+        new_w_goal += self.w_goal + alpha * delta * goal_feat
+        new_w_stupid += self.w_stupid + alpha * delta * feature_m_stupid
+        new_w_smart += self.w_smart + alpha * delta * feature_m_smart
+        new_w_bomb_danger += self.w_bomb_danger + alpha * delta * feat_bomb_danger
+        new_w_bomb_potential += self.w_bomb_potential + alpha * delta * feat_bomb_potential
 
         return new_w_goal, new_w_stupid, new_w_smart
 
@@ -261,7 +307,7 @@ class QLearningCharacter(CharacterEntity):
             reward = value 
 
         candidate_weights = self.q_learning_update(self.tree, reward)
-        print(candidate_weights)
+        # print(candidate_weights)
 
         self.w_goal, self.w_stupid, self.w_smart = candidate_weights
         if isinstance(best_action, tuple):
