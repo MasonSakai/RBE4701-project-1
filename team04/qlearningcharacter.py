@@ -3,7 +3,7 @@ from io import TextIOWrapper
 import sys
 sys.path.insert(0, '../bomberman')
 # Import necessary stuff
-from entity import CharacterEntity
+from entity import BombEntity, CharacterEntity, ExplosionEntity
 from colorama import Fore, Back
 from worldstate import WorldStateTree
 from math import inf
@@ -161,9 +161,22 @@ class QLearningCharacter(CharacterEntity):
             for y in range(-1, 2, 1):
                 if pos[1] + y < 0 or pos[1] + y >= wrld.height():
                     continue
-                if wrld.empty_at(pos[0] + x, pos[1] + y) or wrld.exit_at(pos[0] + x, pos[1] + y):
+                if wrld.empty_at(pos[0] + x, pos[1] + y) or wrld.exit_at(pos[0] + x, pos[1] + y) or wrld.explosion_at(pos[0] + x, pos[1] + y):
+                    neighbors.append((pos[0] + x, pos[1] + y))
+                elif (x == 0 or y == 0) and wrld.wall_at(pos[0] + x, pos[1] + y):
                     neighbors.append((pos[0] + x, pos[1] + y))
         return neighbors
+    
+    def find_bombs_for_wall(self, wrld: SensedWorld, x: int, y: int) -> list[BombEntity]:
+        bombs = []
+        bomb: BombEntity
+        for bomb in wrld.bombs.values():
+            dx = abs(bomb.x - x)
+            dy = abs(bomb.y - y)
+            if (dx == 0 or dy == 0) and (dx <= wrld.expl_range or dy <= wrld.expl_range):
+                bombs.append(bomb)
+        return bomb
+                
     
     def find_path(self, wrld: SensedWorld):
         start_pos = (wrld.me(self).x, wrld.me(self).y)
@@ -186,6 +199,21 @@ class QLearningCharacter(CharacterEntity):
 
             for neighbor in self.get_neighbors(wrld, pos):
                 new_cost = cost_so_far[pos] + 1
+
+                if wrld.wall_at(neighbor[0], neighbor[1]):
+                    m = -1
+                    for bomb in self.find_bombs_for_wall(wrld, neighbor[0], neighbor[1]):
+                        m = max(m, bomb.timer)
+                    if m < 0:
+                        m = wrld.bomb_time
+                    new_cost += m + wrld.expl_duration
+                elif (expls := wrld.explosion_at(neighbor[0], neighbor[1])):
+                    m = 0
+                    expl: ExplosionEntity
+                    for expl in expls:
+                        m = max(m, expl.timer)
+                    new_cost += m
+
                 if neighbor not in cost_so_far or new_cost < cost_so_far[neighbor]:
                     cost_so_far[neighbor] = new_cost
                     priority = new_cost + min(self.dist(g, neighbor) for g in goals)
