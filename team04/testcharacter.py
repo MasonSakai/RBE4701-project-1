@@ -170,7 +170,7 @@ class TestCharacter(CharacterEntity):
         if not self.tree:
             print("Tree Init")
             self.tree = WorldStateTree.CreateTree(self, wrld)
-        depth_limit = 4
+        depth_limit = 2
         value, best_action = self.Expectimax(self.tree, depth=depth_limit)
         print(value, best_action)
         if isinstance(best_action, tuple):

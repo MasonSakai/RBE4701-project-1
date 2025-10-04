@@ -1,0 +1,70 @@
+{
+    "maps": [
+        {
+            "file": "map1.txt",
+            "monsters": "monsters10x18",
+            "characters": "characters10x18"
+        }
+    ],
+    "monsters": {
+        "monsters10x18": [
+            [],
+            [
+                {
+                    "variant": 0,
+                    "name": "stupid",
+                    "avatar": "S",
+                    "x": 3,
+                    "y": 9
+                }
+            ],
+            [
+                {
+                    "variant": 1,
+                    "name": "selfpreserving",
+                    "avatar": "S",
+                    "range": 1,
+                    "x": 3,
+                    "y": 9
+                }
+            ],
+            [
+                {
+                    "variant": 1,
+                    "name": "aggressive",
+                    "avatar": "A",
+                    "range": 2,
+                    "x": 3,
+                    "y": 13
+                }
+            ],
+            [
+                {
+                    "variant": 0,
+                    "name": "stupid",
+                    "avatar": "S",
+                    "x": 3,
+                    "y": 5
+                },
+                {
+                    "variant": 1,
+                    "name": "aggressive",
+                    "avatar": "A",
+                    "range": 2,
+                    "x": 3,
+                    "y": 13
+                }
+            ]
+        ]
+    },
+    "characters": {
+        "characters10x18": [
+            {
+                "name": "me",
+                "avatar": "C",
+                "x": 0,
+                "y": 0
+            }
+        ]
+    }
+}
