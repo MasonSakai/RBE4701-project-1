@@ -3,7 +3,7 @@ from io import TextIOWrapper
 import sys
 sys.path.insert(0, '../bomberman')
 # Import necessary stuff
-from entity import BombEntity, CharacterEntity, ExplosionEntity
+from entity import BombEntity, CharacterEntity, ExplosionEntity, MonsterEntity
 from colorama import Fore, Back
 from worldstate import WorldStateTree
 from math import inf
@@ -57,18 +57,6 @@ class QLearningCharacter(CharacterEntity):
         dx = b[0] - a[0]
         dy = b[1] - a[1]
         return math.sqrt(dx * dx + dy * dy)
-
-    def find_monster(self, wrld: SensedWorld):
-       monster_positions = []
-
-    # Loop over the whole board
-       for m_x in range(wrld.width()):
-        for m_y in range(wrld.height()):
-            monsters = wrld.monsters_at(m_x,m_y)
-            if monsters:
-                monster_positions.append((m_x, m_y))
-
-       return monster_positions
     
     def calculate_bomb_danger(self, wrld: SensedWorld, me: CharacterEntity) -> float:
         """
@@ -116,19 +104,24 @@ class QLearningCharacter(CharacterEntity):
             dist_goal = max(abs(goal_x - me_x), abs(goal_y - me_y))
         goal_feat = -dist_goal
 
-        monsters = self.find_monster(wrld)
         max_range = max(wrld.width(), wrld.height(), 1)
 
         monster_component = 0.0
         feature_m_stupid = 0.0 
         feature_m_smart = 0.0 
 
-        for (m_x, m_y) in monsters:
-            dx = m_x - me.x
-            dy = m_y - me.y
+        
+        for actor in node.actors:
+            if isinstance(actor, CharacterEntity):
+                continue
+            
+            (mname, p_smart, _) = actor
+            monster = node.get_monster_with_name(wrld, mname)
+            
+            dx = monster.x - me.x
+            dy = monster.y - me.y
             dist_m = math.sqrt(dx * dx + dy * dy)
-            p_smart = max(0.0, 1.0 - (dist_m / max_range))
-            neg_dist_m = -dist_m
+            neg_dist_m = 1 / (1 + dist_m)
             
             feature_m_stupid += (1.0 - p_smart) * neg_dist_m
             feature_m_smart += p_smart * neg_dist_m
