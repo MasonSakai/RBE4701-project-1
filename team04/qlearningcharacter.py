@@ -117,6 +117,8 @@ class QLearningCharacter(CharacterEntity):
             
             (mname, p_smart, _) = actor
             monster = node.get_monster_with_name(wrld, mname)
+            if not monster:
+                continue
             
             dx = monster.x - me.x
             dy = monster.y - me.y
