@@ -151,7 +151,7 @@ class WorldStateTree:
                 n_world.me(actor).move(dx, dy)
                 self.child_states.append((WorldStateTree(self, n_world, self.actors.copy()), (dx, dy)))
 
-            if self.find_bomb(player) is not None:
+            if not self.find_bomb(player):
                 n_world = SensedWorld.from_world(self.world)
                 n_world.me(actor).place_bomb()
                 self.child_states.append((WorldStateTree(self, n_world, self.actors.copy()), True))

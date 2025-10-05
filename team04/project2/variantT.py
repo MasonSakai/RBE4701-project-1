@@ -13,7 +13,7 @@ import os
 import atexit
 
 sys.path.insert(1, '../team04')
-from testcharacter import TestCharacter as Character
+from qlearningcharacter import QLearningCharacter as Character
 
 with open('training/maps.json', 'r') as f:
     maps = json.load(f)
@@ -57,7 +57,7 @@ def generateGame() -> Game:
 
     return g
 
-
+g = None
 random.seed()
 log_file = None
 while True:
@@ -71,7 +71,7 @@ def on_close():
 
 atexit.register(on_close)
 
-i = 10
+i = 50
 log_file.write('Starting iterations: {}\n'.format(i))
 
 while i > 0:
@@ -85,6 +85,12 @@ while i > 0:
 
     # Run!
     g.go(True)
+    if g.world.time <= 0:
+        cl: list[Character]
+        for cl in g.world.characters.values():
+            for c in cl:
+                c.done(g.world)
+
 
     print(*g.events, sep=', ')
     log_file.write('events: ')
