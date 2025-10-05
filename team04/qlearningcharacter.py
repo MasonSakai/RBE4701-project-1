@@ -80,8 +80,12 @@ class QLearningCharacter(CharacterEntity):
         return feat_bomb_danger
 
     def out_of_bomb_danger(self, wrld: SensedWorld) -> float:
+        me = wrld.me(self)
+        if not me:
+            me = self
+
         bomb_position = None
-        current_pos = (wrld.me(self).x, wrld.me(self).y)
+        current_pos = (me.x, me.y)
         for b_x in range(wrld.width()):
             for b_y in range(wrld.height()):
                 bomb = wrld.bomb_at(b_x,b_y)
@@ -113,7 +117,7 @@ class QLearningCharacter(CharacterEntity):
 
         next_step_x, next_step_y = first_step
         if wrld.wall_at(next_step_x, next_step_y):
-            return 10.0
+            return 1
         
         return 0.0
     
@@ -130,7 +134,8 @@ class QLearningCharacter(CharacterEntity):
 
     def calculate_monster_component(self, node: WorldStateTree, wrld: SensedWorld, me: CharacterEntity) -> tuple[float, float]:
         feature_m_stupid = 0.0 
-        feature_m_smart = 0.0 
+        feature_m_smart = 0.0
+        min_dist = float('inf')
 
         for actor in node.actors:
             if isinstance(actor, CharacterEntity):
@@ -142,6 +147,10 @@ class QLearningCharacter(CharacterEntity):
                 continue
             
             dist_m = self.dist((me.x, me.y), (monster.x, monster.y))
+            if dist_m >= min_dist:
+                continue
+            min_dist = dist_m
+
             neg_dist_m = 1 / (1 + dist_m)
             
             feature_m_stupid += (1.0 - p_smart) * neg_dist_m
@@ -150,15 +159,10 @@ class QLearningCharacter(CharacterEntity):
         return feature_m_stupid, feature_m_smart
 
     def evaluate_state(self, node: WorldStateTree) -> float:
-
-        if node.character_event == True:
-            # print("I'm giving a high cost", depth)
-            return 10
-        elif node.character_event == False:
-            return -5
-
         wrld = node.world
         me = wrld.me(self)
+        if not me:
+            me = self
 
         goal_feat, first_step = self.calculate_goal_feature(wrld, me)
         feature_m_stupid, feature_m_smart = self.calculate_monster_component(node, wrld, me)
@@ -270,9 +274,9 @@ class QLearningCharacter(CharacterEntity):
         # Handle character events first
         if generatedNode.character_event == True:
             # print("I'm giving a high cost", depth)
-            return 10, None
+            return self.evaluate_state(generatedNode), None
         elif generatedNode.character_event == False:
-            return -5, None
+            return self.evaluate_state(generatedNode), None
 
         if depth == 0:
             return self.evaluate_state(generatedNode), None
@@ -316,6 +320,8 @@ class QLearningCharacter(CharacterEntity):
     def q_learning_update(self, node: WorldStateTree, reward: float, alpha=0.5, gamma=0.9):
         wrld = node.world
         me = wrld.me(self)
+        if not me:
+            me = self
 
         print("Qlearning update", reward)
 
@@ -370,7 +376,7 @@ class QLearningCharacter(CharacterEntity):
         reward = 1 / (1 + dist)
         print(value, best_action, dist, reward)
 
-        candidate_weights = self.q_learning_update(self.tree, reward)
+        candidate_weights = self.q_learning_update(self.tree, 0)
         # print(candidate_weights)
 
         self.w_goal, self.w_stupid, self.w_smart, self.w_bomb_danger, self.w_bomb_potential, self.w_explosion_danger = candidate_weights
@@ -401,7 +407,7 @@ class QLearningCharacter(CharacterEntity):
             elif event.tpe == Event.BOMB_HIT_CHARACTER and event.other == self:
                 reward -= 5
         if wrld.time <= 0:
-            reward = -10
+            reward = -5
         
         self.w_goal, self.w_stupid, self.w_smart, self.w_bomb_danger, self.w_bomb_potential, self.w_explosion_danger = self.q_learning_update(self.tree, reward)
 

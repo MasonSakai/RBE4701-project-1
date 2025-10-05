@@ -53,6 +53,7 @@ class WorldStateTree:
                             self.character_event = event.tpe == Event.CHARACTER_FOUND_EXIT
                             self.child_states = []
                             self.actors.pop(0)
+                            break
                         elif event.tpe == Event.BOMB_HIT_MONSTER:
                             for i in range(1, len(self.actors)):
                                 if self.actors[i][0] == event.other.name:
@@ -145,6 +146,9 @@ class WorldStateTree:
         actor = self.actors[self.actor_turn]
         if isinstance(actor, CharacterEntity): # actor is the player (random + bomb)
             player: CharacterEntity = self.world.me(actor)
+            if not player:
+                return self.child_states
+                
             neighbors = self.get_safe_neighbors(player.x, player.y)
             for (dx, dy) in neighbors:
                 n_world = SensedWorld.from_world(self.world)
