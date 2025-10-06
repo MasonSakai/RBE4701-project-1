@@ -1,5 +1,7 @@
 # This is necessary to find the main code
+from io import TextIOWrapper
 import sys
+
 sys.path.insert(0, '../../bomberman')
 sys.path.insert(1, '..')
 
@@ -8,6 +10,7 @@ import random
 from game import Game
 from monsters.stupid_monster import StupidMonster
 from monsters.selfpreserving_monster import SelfPreservingMonster
+from sensed_world import SensedWorld
 import json
 import os
 import atexit
@@ -17,6 +20,8 @@ from qlearningcharacter import QLearningCharacter as Character
 
 with open('training/maps.json', 'r') as f:
     maps = json.load(f)
+
+log_file: TextIOWrapper = None
 
 def addMonsters(g: Game, data: None | str | list[list[dict]]):
     if not data:
@@ -46,7 +51,7 @@ def addCharacter(g: Game, data: str | list[dict]):
 
     d = random.choice(data)
 
-    g.add_character(Character(d["name"], d["avatar"], d["x"], d["y"]))
+    g.add_character(Character(d["name"], d["avatar"], d["x"], d["y"], log_file))
 def generateGame() -> Game:
     mapData = random.choice(maps["maps"])
 
@@ -59,7 +64,6 @@ def generateGame() -> Game:
 
 g = None
 random.seed()
-log_file = None
 while True:
     name = "training/logs/{}.txt".format(hex(random.getrandbits(32)))
     if not os.path.exists(name):
@@ -75,10 +79,7 @@ i = 50
 log_file.write('Starting iterations: {}\n'.format(i))
 
 while i > 0:
-    log_file.writelines([
-        str(random.getstate()), '\n',
-        'write weights?', '\n'
-    ])
+    log_file.writelines([ str(random.getstate()), '\n' ])
 
     # Create the game
     g = generateGame()
@@ -86,10 +87,11 @@ while i > 0:
     # Run!
     g.go(True)
     if g.world.time <= 0:
+        wrld = SensedWorld.from_world(g.world)
         cl: list[Character]
         for cl in g.world.characters.values():
             for c in cl:
-                c.done(g.world)
+                c.done(wrld)
 
 
     print(*g.events, sep=', ')
