@@ -78,27 +78,10 @@ class QLearningCharacter(CharacterEntity):
         if not me:
             me = self
 
-        bomb_position = None
-        current_pos = (me.x, me.y)
-        for b_x in range(wrld.width()):
-            for b_y in range(wrld.height()):
-                bomb = wrld.bomb_at(b_x,b_y)
-                if bomb:
-                    bomb_position = (bomb.x,bomb.y)
+        bombs = self.find_bombs_for_wall(wrld, me.x, me.y)
+        bombs = list(filter(lambda b: b.timer < 2, bombs))
 
-        if not bomb_position:
-            return 0
-        
-        danger_value = 0
-        directions = [(0, 1),  (0, -1),  (-1, 0),  (1, 0)]
-        for dx, dy in directions:
-            for step in range(1, 5):  
-                new_x = bomb_position[0] + dx * step
-                new_y = bomb_position[1] + dy * step
-            if current_pos==(new_x,new_y):
-                danger_value = 1
-
-        return danger_value
+        return 1 if len(bombs) == 0 else 0
 
     def calculate_bomb_potential(self, wrld: World, me: CharacterEntity, first_step: tuple[int, int]) -> float:
         
@@ -341,15 +324,18 @@ class QLearningCharacter(CharacterEntity):
         return new_w_goal, new_w_monster, new_w_bomb_danger, new_w_bomb_potential, new_w_explosion_danger
 
     def calc_reward(self, wrld: World, v_exmax: float, a_exmax: tuple[int, int] | bool, d_goal: float, p_path: tuple[int, int]) -> float:
+        if not self.out_of_bomb_danger(wrld):
+            return -1
+
         dx = p_path[0] - self.x
         dy = p_path[1] - self.y
 
         if wrld.wall_at(*p_path):
-            return 0.5 if a_exmax == True else -0.2
+            return 2 if a_exmax == True else -1
         elif a_exmax == True:
             return 0
         elif isinstance(a_exmax, tuple):
-            return (a_exmax[0] * dx + a_exmax[1] * dy) * 0.3
+            return (a_exmax[0] * dx + a_exmax[1] * dy) - 0.1
         else:
             print("Error, a_exmax is", a_exmax, v_exmax)
     
