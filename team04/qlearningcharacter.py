@@ -117,9 +117,10 @@ class QLearningCharacter(CharacterEntity):
 
         next_step_x, next_step_y = first_step
         if wrld.wall_at(next_step_x, next_step_y):
-            return 1
+            return 5
         
         return 0.0
+
     
     def calculate_goal_feature(self, wrld: SensedWorld, me: CharacterEntity) -> tuple[float, tuple[int, int]]:
         dist_goal, first_step = self.find_path(wrld)
@@ -172,6 +173,17 @@ class QLearningCharacter(CharacterEntity):
         if feat_expl_danger == None:
             feat_expl_danger = 0
         q_value = self.w_goal * goal_feat + self.w_stupid * feature_m_stupid + self.w_smart * feature_m_smart + self.w_bomb_danger * feat_bomb_danger + self.w_bomb_potential * feat_bomb_potential + self.w_explosion_danger * feat_expl_danger
+
+        print(f"  Q-Value Eval:")
+        print(f"    {'Feature':<18} | {'Weight':>8} | {'Value':>8} | {'Contribution':>12}")
+        print(f"    {'-'*18} | {'-'*8} | {'-'*8} | {'-'*12}")
+        print(f"    {'Goal':<18} | {self.w_goal:>8.2f} | {goal_feat:>8.2f} | {self.w_goal * goal_feat:>12.2f}")
+        print(f"    {'Monster (Stupid)':<18} | {self.w_stupid:>8.2f} | {feature_m_stupid:>8.2f} | {self.w_stupid * feature_m_stupid:>12.2f}")
+        print(f"    {'Monster (Smart)':<18} | {self.w_smart:>8.2f} | {feature_m_smart:>8.2f} | {self.w_smart * feature_m_smart:>12.2f}")
+        print(f"    {'Bomb Proximity':<18} | {self.w_bomb_danger:>8.2f} | {feat_bomb_danger:>8.2f} | {self.w_bomb_danger * feat_bomb_danger:>12.2f}")
+        print(f"    {'Bomb Potential':<18} | {self.w_bomb_potential:>8.2f} | {feat_bomb_potential:>8.2f} | {self.w_bomb_potential * feat_bomb_potential:>12.2f}")
+        print(f"    {'Explosion Danger':<18} | {self.w_explosion_danger:>8.2f} | {feat_expl_danger:>8.2f} | {self.w_explosion_danger * feat_expl_danger:>12.2f}")
+        print(f"    -> Final Q-Value: {q_value:.3f}")
         
         return q_value
 
@@ -350,12 +362,16 @@ class QLearningCharacter(CharacterEntity):
 
         delta = (reward + gamma * best_future_q) - q_value
 
+        print(f"  Q-Learning Update:")
+        print(f"    Reward: {reward:.2f}, Q_current: {q_value:.2f}, Q_future_best: {best_future_q:.2f}")
+        print(f"    Delta (Error): {delta:.3f} = ({reward:.2f} + {gamma:.1f} * {best_future_q:.2f}) - {q_value:.2f}")
+
         new_w_goal = self.w_goal + alpha * delta * goal_feat
         new_w_stupid = self.w_stupid + alpha * delta * feature_m_stupid
         new_w_smart = self.w_smart + alpha * delta * feature_m_smart
         new_w_bomb_danger = self.w_bomb_danger + alpha * delta * feat_bomb_danger
         new_w_bomb_potential = self.w_bomb_potential + alpha * delta * feat_bomb_potential
-        new_w_explosion_danger = self.w_bomb_potential + alpha * delta * feat_expl_danger
+        new_w_explosion_danger = self.w_explosion_danger + alpha * delta * feat_expl_danger
 
         return new_w_goal, new_w_stupid, new_w_smart, new_w_bomb_danger, new_w_bomb_potential, new_w_explosion_danger
 
@@ -370,13 +386,16 @@ class QLearningCharacter(CharacterEntity):
             print("Tree Init")
             self.tree = WorldStateTree.CreateTree(self, wrld)
 
-        depth_limit = 2
+        depth_limit = 3
         value, best_action = self.Expectimax(self.tree, depth=depth_limit)
         (dist, _) = self.find_path(wrld)
         reward = 1 / (1 + dist)
-        print(value, best_action, dist, reward)
+        if self.out_of_bomb_danger(wrld) == 1.0: # Or is_in_explosion_danger(wrld)
+            reward = -100 # A large negative number
+        # print(value, best_action, dist, reward)
+        print(f"Expectimax result: value={value:.3f}, action={best_action}. Current dist to goal: {dist}. Step reward: {reward:.3f}")
 
-        candidate_weights = self.q_learning_update(self.tree, 0)
+        candidate_weights = self.q_learning_update(self.tree, reward)
         # print(candidate_weights)
 
         self.w_goal, self.w_stupid, self.w_smart, self.w_bomb_danger, self.w_bomb_potential, self.w_explosion_danger = candidate_weights
@@ -408,8 +427,6 @@ class QLearningCharacter(CharacterEntity):
                 reward -= 5
         if wrld.time <= 0:
             reward = -5
-        
         self.w_goal, self.w_stupid, self.w_smart, self.w_bomb_danger, self.w_bomb_potential, self.w_explosion_danger = self.q_learning_update(self.tree, reward)
 
         self.save_weights()
-        
