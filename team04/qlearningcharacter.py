@@ -375,6 +375,18 @@ class QLearningCharacter(CharacterEntity):
 
         return new_w_goal, new_w_stupid, new_w_smart, new_w_bomb_danger, new_w_bomb_potential, new_w_explosion_danger
 
+    def calc_reward(self, wrld: World, v_exmax: float, a_exmax: tuple[int, int] | bool, d_goal: float, p_path: tuple[int, int]) -> float:
+        dx = p_path[0] - self.x
+        dy = p_path[1] - self.y
+
+        if wrld.wall_at(*p_path):
+            return 1 if a_exmax == True else -1
+        elif a_exmax == True:
+            return -0.1
+        elif isinstance(a_exmax, tuple):
+            return a_exmax[0] * dx + a_exmax[1] * dy - 0.1
+        else:
+            print("Error, a_exmax is", a_exmax, v_exmax)
     
     def do(self, wrld: World):
         if self.tree:
@@ -390,10 +402,7 @@ class QLearningCharacter(CharacterEntity):
         value, best_action = self.Expectimax(self.tree, depth=depth_limit)
         (dist, _) = self.find_path(wrld)
         reward = 1 / (1 + dist)
-        if self.out_of_bomb_danger(wrld) == 1.0: # Or is_in_explosion_danger(wrld)
-            reward = -100 # A large negative number
-        # print(value, best_action, dist, reward)
-        print(f"Expectimax result: value={value:.3f}, action={best_action}. Current dist to goal: {dist}. Step reward: {reward:.3f}")
+        print(value, best_action, dist, reward)
 
         candidate_weights = self.q_learning_update(self.tree, reward)
         # print(candidate_weights)
@@ -404,7 +413,7 @@ class QLearningCharacter(CharacterEntity):
         elif best_action == True:
             self.place_bomb()
         else:
-            return None
+            return
         
     def done(self, wrld: SensedWorld):
         if self.tree:

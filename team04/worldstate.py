@@ -46,19 +46,6 @@ class WorldStateTree:
             self.actor_turn = parent_state.actor_turn + 1
             if self.actor_turn >= len(self.actors):
                 self.actor_turn = 0
-                (self.world, events) = self.world.next()
-                for event in events:
-                    if isinstance(event, Event):
-                        if isinstance(actors[0], CharacterEntity) and ((event.tpe == Event.BOMB_HIT_CHARACTER and event.other.name == actors[0].name) or ((event.tpe == Event.CHARACTER_KILLED_BY_MONSTER or event.tpe == Event.CHARACTER_FOUND_EXIT) and event.character.name == actors[0].name)):
-                            self.character_event = event.tpe == Event.CHARACTER_FOUND_EXIT
-                            self.child_states = []
-                            self.actors.pop(0)
-                            break
-                        elif event.tpe == Event.BOMB_HIT_MONSTER:
-                            for i in range(1, len(self.actors)):
-                                if self.actors[i][0] == event.other.name:
-                                    self.actors.pop(i)
-                                    break
 
     def get_safe_neighbors(self, x: int, y: int) -> list[tuple[int, int]]:
         """
@@ -133,11 +120,33 @@ class WorldStateTree:
                     return monster
         return None
 
+    def check_world_next(self):
+        if self.parent_state and self.parent_state.actor_turn == 0:
+            (self.world, events) = self.world.next()
+            for event in events:
+                if isinstance(event, Event):
+                    if isinstance(self.actors[0], CharacterEntity) and ((event.tpe == Event.BOMB_HIT_CHARACTER and event.other.name == self.actors[0].name) or ((event.tpe == Event.CHARACTER_KILLED_BY_MONSTER or event.tpe == Event.CHARACTER_FOUND_EXIT) and event.character.name == self.actors[0].name)):
+                        self.character_event = event.tpe == Event.CHARACTER_FOUND_EXIT
+                        self.child_states = []
+                        self.actors.pop(0)
+                        break
+                    elif event.tpe == Event.BOMB_HIT_MONSTER:
+                        for i in range(1, len(self.actors)):
+                            if self.actors[i][0] == event.other.name:
+                                self.actors.pop(i)
+                                break
+            return True
+        return False
+                                
+
     def get_next(self, verbose_probs: bool = False) -> list[tuple['WorldStateTree', float | tuple[int, int] | bool]]:
         """
         Gets the child nodes to this world state\n
         Will calculate only when first called, set child_states to None to recalculate 
         """
+        if self.check_world_next() and self.has_children():
+            return self.child_states
+
         if not verbose_probs and self.has_children():
             return self.child_states
         
