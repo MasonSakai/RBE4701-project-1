@@ -335,7 +335,7 @@ class QLearningCharacter(CharacterEntity):
         elif a_exmax == True:
             return 0
         elif isinstance(a_exmax, tuple):
-            return (a_exmax[0] * dx + a_exmax[1] * dy) - 0.1
+            return (a_exmax[0] * dx + a_exmax[1] * dy) + (1 / (1 + d_goal) - 0.9)
         else:
             print("Error, a_exmax is", a_exmax, v_exmax)
     

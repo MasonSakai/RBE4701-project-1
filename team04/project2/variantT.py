@@ -23,6 +23,14 @@ with open('training/maps.json', 'r') as f:
 
 log_file: TextIOWrapper = None
 
+def extract_weights(data: list[dict]) -> list[float]:
+    def extract_weight(d: dict) -> float:
+        if 'weight' in d:
+            return d['weight']
+        return 1
+
+    return list(map(extract_weight, data))
+
 def addMonsters(g: Game, data: None | str | list[list[dict]]):
     if not data:
         return
@@ -33,7 +41,7 @@ def addMonsters(g: Game, data: None | str | list[list[dict]]):
     if not data or len(data) == 0:
         return
 
-    data = random.choice(data)
+    data = random.choices(data, weights=extract_weights(data), k=1)[0]
 
     for d in data:
         monster = None
@@ -49,11 +57,12 @@ def addCharacter(g: Game, data: str | list[dict]):
     if isinstance(data, str):
         data = maps["characters"][data]
 
-    d = random.choice(data)
+    d = random.choices(data, weights=extract_weights(data), k=1)[0]
 
     g.add_character(Character(d["name"], d["avatar"], d["x"], d["y"], log_file))
 def generateGame() -> Game:
-    mapData = random.choice(maps["maps"])
+    data = maps["maps"]
+    mapData = random.choices(data, weights=extract_weights(data), k=1)[0]
 
     g = Game.fromfile('training/maps/' + mapData["file"])
     
