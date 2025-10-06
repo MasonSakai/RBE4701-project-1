@@ -66,29 +66,15 @@ class QLearningCharacter(CharacterEntity):
         dx = b[0] - a[0]
         dy = b[1] - a[1]
         return math.sqrt(dx * dx + dy * dy)
-    
-    def calculate_bomb_danger(self, wrld: SensedWorld, me: CharacterEntity) -> float:
-        feat_bomb_danger = 0.0
-        all_bombs = wrld.bombs.values()
-        if all_bombs:
-            min_dist_to_bomb = float('inf')
-            for bomb in all_bombs:
-                dist_b = self.dist((me.x, me.y), (bomb.x, bomb.y))
-                if dist_b < min_dist_to_bomb:
-                    min_dist_to_bomb = dist_b
-            feat_bomb_danger = 1.0 / (min_dist_to_bomb + 1.0)
-        return feat_bomb_danger
 
-    def out_of_bomb_danger(self, wrld: SensedWorld) -> float:
-        me = wrld.me(self)
-        if not me:
-            me = self
+
+    def out_of_bomb_danger(self, wrld: World, coordinates:tuple) -> float:
 
         bomb_position = None
-        current_pos = (me.x, me.y)
+        current_pos = (coordinates)
         for b_x in range(wrld.width()):
             for b_y in range(wrld.height()):
-                bomb = wrld.bomb_at(b_x,b_y)
+                bomb = wrld.bomb_at(coordinates)
                 if bomb:
                     bomb_position = (bomb.x,bomb.y)
 
@@ -106,87 +92,80 @@ class QLearningCharacter(CharacterEntity):
 
         return danger_value
 
-    def calculate_bomb_potential(self, node: WorldStateTree, me: CharacterEntity, first_step: tuple[int, int]) -> float:
-        wrld = node.world
-
-        if first_step is None:
-            return 0.0
-
-        if node.find_bomb(me) is not None:
-            return 0.0
-
-        next_step_x, next_step_y = first_step
-        if wrld.wall_at(next_step_x, next_step_y):
+    def calculate_bomb_potential(self, wrld:World, coordinates: tuple[int, int]) -> float:
+        x,y=coordinates
+        if wrld.wall_at(x,y+1):
             return 1
         
-        return 0.0
+        else:
+            return 0
     
-    def calculate_goal_feature(self, wrld: SensedWorld, me: CharacterEntity) -> tuple[float, tuple[int, int]]:
-        dist_goal, first_step = self.find_path(wrld)
-        
-        if dist_goal == float("inf"):
-            goal_x, goal_y = wrld.exitcell
-            me_x, me_y = me.x, me.y
-            dist_goal = max(abs(goal_x - me_x), abs(goal_y - me_y))
-            
-        goal_feat = 1 / (1 + dist_goal)
-        return goal_feat, first_step
+    def calculate_goal_feature(self, wrld: World, coordinates: tuple) -> tuple[float, tuple[int, int]]:
+      for g_x in range(wrld.width()): 
+        for g_y in range(wrld.height()):
+            if wrld.exit_at(g_x,g_y):
+                goal=(g_x,g_y)
+           
+      dist_goal = self.dist(coordinates,goal)
+      
+      return dist_goal
+    
 
-    def calculate_monster_component(self, node: WorldStateTree, wrld: SensedWorld, me: CharacterEntity) -> tuple[float, float]:
-        feature_m_stupid = 0.0 
-        feature_m_smart = 0.0
-        min_dist = float('inf')
+    def find_monster_stupid(self, wrld: World, position: tuple):
+       monster_position_stupid = None
 
-        for actor in node.actors:
-            if isinstance(actor, CharacterEntity):
-                continue
-            
-            (mname, p_smart, _) = actor
-            monster = WorldStateTree.get_monster_with_name(wrld, mname)
-            if not monster:
-                continue
-            
-            dist_m = self.dist((me.x, me.y), (monster.x, monster.y))
-            if dist_m >= min_dist:
-                continue
-            min_dist = dist_m
+    # Loop over the whole board
+       for m_x in range(wrld.width()): 
+        for m_y in range(wrld.height()):
+           if (wrld.monsters_at(m_x,m_y).x,wrld.monsters_at(m_x,m_y).y) and "stupid" == wrld.monsters_at(m_x,m_y).name:
+               monster_position_stupid=(wrld.monsters_at(m_x,m_y).x,wrld.monsters_at(m_x,m_y).y)
 
-            neg_dist_m = 1 / (1 + dist_m)
-            
-            feature_m_stupid += (1.0 - p_smart) * neg_dist_m
-            feature_m_smart += p_smart * neg_dist_m
-        
-        return feature_m_stupid, feature_m_smart
+       if monster_position_stupid:
+           return self.dist(position,monster_position_stupid)
+       else:
+           return 0
+       
 
-    def evaluate_state(self, node: WorldStateTree) -> float:
-        wrld = node.world
-        me = wrld.me(self)
-        if not me:
-            me = self
+    def find_monster_agressive(self, wrld: World, position: tuple):
+       monster_position_aggresive = None
 
-        goal_feat, first_step = self.calculate_goal_feature(wrld, me)
-        feature_m_stupid, feature_m_smart = self.calculate_monster_component(node, wrld, me)
-        feat_bomb_danger = self.calculate_bomb_danger(wrld, me)
-        feat_expl_danger = self.out_of_bomb_danger(wrld)
-        feat_bomb_potential = self.calculate_bomb_potential(node, me, first_step)
-        if feat_expl_danger == None:
-            feat_expl_danger = 0
-        q_value = self.w_goal * goal_feat + self.w_stupid * feature_m_stupid + self.w_smart * feature_m_smart + self.w_bomb_danger * feat_bomb_danger + self.w_bomb_potential * feat_bomb_potential + self.w_explosion_danger * feat_expl_danger
-        
+    # Loop over the whole board
+       for m_x in range(wrld.width()): 
+        for m_y in range(wrld.height()):
+           if (wrld.monsters_at(m_x,m_y).x,wrld.monsters_at(m_x,m_y).y) and "aggressive" == wrld.monsters_at(m_x,m_y).name:
+               monster_position_aggresive=(wrld.monsters_at(m_x,m_y).x,wrld.monsters_at(m_x,m_y).y)
+
+       if monster_position_aggresive:
+           return self.dist(position,monster_position_aggresive)
+       else:
+           return 0
+       
+    def find_monster_self_preserving(self, wrld: World, position: tuple):
+       monster_position_selfpreserving = None
+
+    # Loop over the whole board
+       for m_x in range(wrld.width()): 
+        for m_y in range(wrld.height()):
+           if (wrld.monsters_at(m_x,m_y).x,wrld.monsters_at(m_x,m_y).y) and "selfpreserving" == wrld.monsters_at(m_x,m_y).name:
+               monster_position_selfpreserving=(wrld.monsters_at(m_x,m_y).x,wrld.monsters_at(m_x,m_y).y)
+
+       if monster_position_selfpreserving:
+           return self.dist(position,monster_position_selfpreserving)
+       else:
+           return 0
+
+
+
+    def evaluate_state(self, wrld: World,coordinates: tuple) -> float:
+        goal_feat = self.calculate_goal_feature(wrld, coordinates)
+        feat_expl_danger = self.out_of_bomb_danger(wrld,coordinates)
+        feat_bomb_potential = self.calculate_bomb_potential(wrld, coordinates)
+
+        q_value = self.w_goal * goal_feat + self.w_bomb_potential * feat_bomb_potential + self.w_explosion_danger * feat_expl_danger
         return q_value
 
-    def get_goals(self, wrld: SensedWorld) -> set[tuple[int, int]]:
-            """
-            Return a set of all goal positions (x, y) in the world.
-            """
-            goals = set()
-            for x in range(wrld.width()):
-                for y in range(wrld.height()):
-                    if wrld.exit_at(x, y): 
-                        goals.add((x, y))
-            return goals
     
-    def get_neighbors(self, wrld: SensedWorld, pos: tuple[int, int]) -> list[tuple[int, int]]:
+    def get_neighbors(self, wrld: World, pos: tuple[int, int]) -> list[tuple[int, int]]:
         neighbors = list()
         for x in range(-1, 2, 1):
             if pos[0] + x < 0 or pos[0] + x >= wrld.width():
@@ -200,179 +179,29 @@ class QLearningCharacter(CharacterEntity):
                     neighbors.append((pos[0] + x, pos[1] + y))
         return neighbors
     
-    def find_bombs_for_wall(self, wrld: SensedWorld, x: int, y: int) -> list[BombEntity]:
-        bombs = []
-        bomb: BombEntity
-        for bomb in wrld.bombs.values():
-            dx = abs(bomb.x - x)
-            dy = abs(bomb.y - y)
-            if (dx == 0 or dy == 0) and (dx <= wrld.expl_range or dy <= wrld.expl_range):
-                bombs.append(bomb)
-        return bombs
-    
-    def find_path(self, wrld: SensedWorld):
-        me = wrld.me(self)
-        if not me:
-            me = self
-        start_pos = (me.x, me.y)
-
-        queue = PriorityQueue()
-        came_from = {start_pos: None}
-        cost_so_far = {start_pos: 0}
-
-        goals = self.get_goals(wrld)
-        found_goal = None
-
-        queue.put((0, start_pos))
-
-        while not queue.empty():
-            _, pos = queue.get(False)
-
-            if pos in goals:
-                found_goal = pos
-                break
-
-            for neighbor in self.get_neighbors(wrld, pos):
-                new_cost = cost_so_far[pos] + 1
-
-                if wrld.wall_at(neighbor[0], neighbor[1]):
-                    m = -1
-                    for bomb in self.find_bombs_for_wall(wrld, neighbor[0], neighbor[1]):
-                        m = max(m, bomb.timer)
-                    if m < 0:
-                        m = wrld.bomb_time
-                    new_cost += m + wrld.expl_duration
-                elif (expl := wrld.explosion_at(neighbor[0], neighbor[1])):
-                    new_cost += expl.timer
-
-                if neighbor not in cost_so_far or new_cost < cost_so_far[neighbor]:
-                    cost_so_far[neighbor] = new_cost
-                    priority = new_cost + min(self.dist(g, neighbor) for g in goals)
-                    queue.put((priority, neighbor))
-                    came_from[neighbor] = pos
-
-        if not found_goal:
-            return float("inf"), None
-
-        path = []
-        pos = found_goal
-        while pos is not None:
-            path.append(pos)
-            pos = came_from[pos]
-        path.reverse() 
-
-        if len(path) > 1:
-            first_step = path[1]
-        else:
-            first_step = None
-
-        return cost_so_far[found_goal], first_step
 
 
-# Function needs to stop at a certain depth on the tree. We pass in the tree and the required depth
-    def Expectimax(self, generatedNode: WorldStateTree, depth=3, alpha=-50, beta=50):
-        # Handle character events first
-        if generatedNode.character_event == True:
-            # print("I'm giving a high cost", depth)
-            return self.evaluate_state(generatedNode), None
-        elif generatedNode.character_event == False:
-            return self.evaluate_state(generatedNode), None
+    def q_learning_update(self, reward, best_future_q:float, q_value:float, coordinates:tuple, wrld:World, alpha=0.5, gamma=0.9):
 
-        if depth == 0:
-            return self.evaluate_state(generatedNode), None
-
-        if generatedNode.is_player_turn():
-            best_value = float('-inf')
-            best_action = None
-            children = generatedNode.get_next().copy()
-            random.shuffle(children)
-            for (child, action) in children:
-                value, _ = self.Expectimax(child, depth - 1, alpha, beta)
-                value -= 1 
-                if value > best_value:
-                    best_value = value
-                    best_action = action
-                # if best_value >= beta:
-                #     #print("Playr branch pruned", alpha, beta, best_value)
-                #     return best_value, best_action
-                # alpha = max(alpha, best_value)
-            return best_value, best_action
-
-        else:
-            v = 0
-            p_i = 1
-            v_i = 0
-            for (child, p) in generatedNode.get_next():
-                value, _ = self.Expectimax(child, depth-1, alpha, beta)
-                v += p * value
-                p_i -= p
-                v_i = v + p_i * beta
-                if (p_i < -1e-5):
-                    print(p_i)
-                    print(generatedNode.get_next(True))
-                    print(sum(map(lambda p: p[1], generatedNode.get_next())))
-                    raise Exception("probability sum error")
-                # if v_i < alpha:
-                #     return v_i, None
-                # beta = min(beta, v_i)
-            return v, None
-
-    def q_learning_update(self, node: WorldStateTree, reward: float, alpha=0.5, gamma=0.9):
-        wrld = node.world
-        me = wrld.me(self)
-        if not me:
-            me = self
 
         print("Qlearning update", reward)
 
-        goal_feat, first_step = self.calculate_goal_feature(wrld, me)
-        feature_m_stupid, feature_m_smart = self.calculate_monster_component(node, wrld, me)
-        feat_bomb_danger = self.calculate_bomb_danger(wrld, me)
-        feat_bomb_potential = self.calculate_bomb_potential(node, me, first_step)
-        feat_expl_danger = self.out_of_bomb_danger(wrld)
-        if feat_expl_danger == None:
-            feat_expl_danger = 0
-
-        q_value = self.evaluate_state(node)
-
-        best_future_q = -float("inf")
-        next_nodes = node.fill_single_step()
-        if not next_nodes:
-            best_future_q = 0.0
-        else:
-            for child in next_nodes:
-                q_next = self.evaluate_state(child)
-                if q_next > best_future_q:
-                    best_future_q = q_next
-        
-        if best_future_q == -float("inf"):
-             best_future_q = 0.0
+        goal_feat, first_step = self.calculate_goal_feature(wrld, coordinates)
+        feat_bomb_potential = self.calculate_bomb_potential(wrld,coordinates)
+        feat_expl_danger = self.out_of_bomb_danger(wrld,coordinates=)
 
         delta = (reward + gamma * best_future_q) - q_value
 
         new_w_goal = self.w_goal + alpha * delta * goal_feat
-        new_w_stupid = self.w_stupid + alpha * delta * feature_m_stupid
-        new_w_smart = self.w_smart + alpha * delta * feature_m_smart
-        new_w_bomb_danger = self.w_bomb_danger + alpha * delta * feat_bomb_danger
         new_w_bomb_potential = self.w_bomb_potential + alpha * delta * feat_bomb_potential
         new_w_explosion_danger = self.w_bomb_potential + alpha * delta * feat_expl_danger
 
-        return new_w_goal, new_w_stupid, new_w_smart, new_w_bomb_danger, new_w_bomb_potential, new_w_explosion_danger
+        return new_w_goal,new_w_bomb_potential, new_w_explosion_danger
 
     
     def do(self, wrld: World):
-        if self.tree:
-            self.tree.fill_single_step()
-            self.tree = self.tree.get_progressed_state(wrld)
-            if self.tree:
-                self.tree.prune_parents()
-        if not self.tree:
-            print("Tree Init")
-            self.tree = WorldStateTree.CreateTree(self, wrld)
-
-        depth_limit = 2
-        value, best_action = self.Expectimax(self.tree, depth=depth_limit)
-        (dist, _) = self.find_path(wrld)
+        
+        
         reward = 1 / (1 + dist)
         print(value, best_action, dist, reward)
 
