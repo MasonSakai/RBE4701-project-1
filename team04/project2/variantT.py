@@ -62,15 +62,22 @@ def generateGame(index) -> Game:
 g = None
 random.seed()
 
-iterations = 50
+max_iterations = 50
+iterations = 0
 
 def on_close():
-    print(iterations, *results.items(), sep='\n')
+    print('Iterations Ran', iterations)
+    for name, data in results.items():
+        if isinstance(data, str):
+            print("{}: {}".format(name, data))
+        else:
+            print(name)
+            print(*map(lambda s: '\t' + str(s), data.items()), sep='\n')
 
 atexit.register(on_close)
 
-while iterations > 0:
-    iterations -= 1
+while iterations < max_iterations:
+    iterations += 1
     for index in range(len(maps)):
         # Create the game
         g = generateGame(index)

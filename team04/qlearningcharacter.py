@@ -548,21 +548,21 @@ class QLearningCharacter(CharacterEntity):
                 reward -= 5
 
             name = str(event)
-            if name not in self.results_data:
-                self.results_data[name] = { }
-            if self.agent_state not in self.results_data[name]:
-                self.results_data[name][self.agent_state] = 0
-            self.results_data[name][self.agent_state] += 1
+            if self.agent_state not in self.results_data:
+                self.results_data[self.agent_state] = { }
+            if name not in self.results_data[self.agent_state]:
+                self.results_data[self.agent_state][name] = 0
+            self.results_data[self.agent_state][name] += 1
 
         if wrld.time <= 0:
             reward = -5
 
             name = "out of time"
-            if name not in self.results_data:
-                self.results_data[name] = { }
-            if self.agent_state not in self.results_data[name]:
-                self.results_data[name][self.agent_state] = 0
-            self.results_data[name][self.agent_state] += 1
+            if self.agent_state not in self.results_data:
+                self.results_data[self.agent_state] = { }
+            if name not in self.results_data[self.agent_state]:
+                self.results_data[self.agent_state][name] = 0
+            self.results_data[self.agent_state][name] += 1
         
         self.w_goal, self.w_monster, self.w_bomb_danger, self.w_bomb_potential, self.w_explosion_danger = self.q_learning_update(wrld, reward)
 
