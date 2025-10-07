@@ -14,12 +14,13 @@ import math
 from queue import PriorityQueue
 
 class QLearningCharacter(CharacterEntity):
-    w_goal: float = 0
-    w_monster: float = 0
-    w_bomb_danger: float = 0
+    w_goal: float = 10
+    w_monster: float = -5
+    w_bomb_danger: float = 0.5
     w_bomb_potential: float = 0
-    w_explosion_danger: float = 0
+    w_explosion_danger: float = -3
     saved_weights = False
+    saved_dist: float = None
 
     def __init__(self, name, avatar, x, y, log_file: TextIOWrapper):
         super().__init__(name, avatar, x, y)
@@ -81,19 +82,24 @@ class QLearningCharacter(CharacterEntity):
         bombs = self.find_bombs_for_wall(wrld, me.x, me.y)
         bombs = list(filter(lambda b: b.timer < 2, bombs))
 
-        return 1 if len(bombs) == 0 else 0
+        return len(bombs)
 
     def calculate_bomb_potential(self, wrld: World, me: CharacterEntity, first_step: tuple[int, int]) -> float:
-        
+        def adjacent_pos(x: int, y: int):
+            for (dx, dy) in [(1, 0), (0, 1), (-1, 0), (0, -1)]:
+                if x + dx < 0 or x + dx >= wrld.width(): continue
+                if y + dy < 0 or y + dy >= wrld.height(): continue
+                if wrld.wall_at(x + dx, y + dy): return True
+            return False
+
+
         if first_step is None:
             return 0.0
 
-        if self.find_bomb(wrld, me) is not None:
-            return 0.0
+        if (bomb := self.find_bomb(wrld, me)) is not None:
+            return adjacent_pos(bomb.x, bomb.y)
 
-        next_step_x, next_step_y = first_step
-        if wrld.wall_at(next_step_x, next_step_y):
-            return 1
+        adjacent_pos(me.x, me.y)
         
         return 0.0
     
@@ -105,7 +111,7 @@ class QLearningCharacter(CharacterEntity):
             me_x, me_y = me.x, me.y
             dist_goal = max(abs(goal_x - me_x), abs(goal_y - me_y))
             
-        goal_feat = 1 / (1 + dist_goal)
+        goal_feat = 1 - (dist_goal / self.saved_dist)
         return goal_feat, first_step
 
     def calculate_monster_component(self, wrld: SensedWorld, me: CharacterEntity) -> float:
@@ -331,19 +337,29 @@ class QLearningCharacter(CharacterEntity):
         dy = p_path[1] - self.y
 
         if wrld.wall_at(*p_path):
-            return 2 if a_exmax == True else -1
+            return 2 if a_exmax == True else -0.2
         elif a_exmax == True:
-            return 0
+            return 0.5
         elif isinstance(a_exmax, tuple):
-            return (a_exmax[0] * dx + a_exmax[1] * dy) + (1 / (1 + d_goal) - 0.9)
+            return (a_exmax[0] * dx + a_exmax[1] * dy)# + (1 / (1 + d_goal) - 0.9)
         else:
             print("Error, a_exmax is", a_exmax, v_exmax)
+
+        """
+        reward based on distance
+        small base reward
+        scale reward based on time
+        punishment for standing still too long
+        """
     
     def do(self, wrld: World):
+        if not self.saved_dist:
+            (self.saved_dist, _) = self.find_path(wrld)
+
         value, best_action = self.get_action(wrld)
         (dist, next) = self.find_path(wrld)
         reward = self.calc_reward(wrld, value, best_action, dist, next)
-        print(value, best_action, dist, next, reward)
+        print(value, best_action, dist / self.saved_dist, next, reward)
 
         candidate_weights = self.q_learning_update(wrld, reward)
         # print(candidate_weights)
