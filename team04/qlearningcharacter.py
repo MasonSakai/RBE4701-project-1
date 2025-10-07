@@ -378,6 +378,19 @@ class QLearningCharacter(CharacterEntity):
         new_w_bomb_danger = self.w_bomb_danger + alpha * delta * feat_bomb_danger
         new_w_explosion_danger = self.w_explosion_danger + alpha * delta * feat_expl_danger
 
+        log_goal = math.floor(math.log10(abs(new_w_goal)))
+        log_mstr = math.floor(math.log10(abs(new_w_monster)))
+        log_bomb = math.floor(math.log10(abs(new_w_bomb_danger)))
+        log_expl = math.floor(math.log10(abs(new_w_explosion_danger)))
+
+        log_max = max(log_goal, log_mstr, log_bomb, log_expl)
+        if log_max > 2:
+            m = 1 / pow(10, log_max - 2)
+            new_w_goal *= m
+            new_w_monster *= m
+            new_w_bomb_danger *= m
+            new_w_explosion_danger *= m
+
         return new_w_goal, new_w_monster, new_w_bomb_danger, new_w_explosion_danger
 
     def calc_reward(self, wrld: World, v_exmax: float, a_exmax: tuple[int, int] | bool) -> float:
