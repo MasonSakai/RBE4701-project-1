@@ -21,6 +21,8 @@ with open('training/maps.json', 'r') as f:
 
 results: dict[str, str | dict[str, dict[str, int]]] = { }
 
+do_training = False
+
 def addMonsters(g: Game, data: None | str | list[list[dict]]):
     if not data:
         return
@@ -44,7 +46,7 @@ def addMonsters(g: Game, data: None | str | list[list[dict]]):
 def generateGame(index) -> Game:
     data = maps[index]
     
-    if data["train"] == False:
+    if do_training and data["train"] == False:
         results[data['name']] = "Not Played"
         return None
 
@@ -55,18 +57,19 @@ def generateGame(index) -> Game:
     
     addMonsters(g, data["monsters"])
     
-    g.add_character(Character("me", 'C', 0, 0, data['name'], results[data['name']]))
+    g.add_character(Character("me", 'C', 0, 0, data['name'], do_training=do_training, results_data=results[data['name']]))
 
     return g
 
 g = None
 random.seed()
 
-max_iterations = -1
+max_iterations = 50
 iterations = 0
 
 def on_close():
     print('Iterations Ran', iterations)
+    if not do_training: print('Not Training!')
     for name, data in results.items():
         if isinstance(data, str):
             print("{}: {}".format(name, data))

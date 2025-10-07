@@ -28,10 +28,12 @@ class QLearningCharacter(CharacterEntity):
     is_monster = False
     flee_target: tuple[int, int] = None
 
-    def __init__(self, name, avatar, x, y, weight_file_name, results_data = {}):
+    def __init__(self, name, avatar, x, y, weight_file_name, do_training = False, results_data = {}):
         super().__init__(name, avatar, x, y)
         self.weight_file = "training/{}.txt".format(weight_file_name)
         self.results_data = results_data
+        self.do_training = do_training
+        self.saved_weights = not do_training
         
         try: # Load weights from file
             with open(self.weight_file, 'r') as wfile:
@@ -341,6 +343,9 @@ class QLearningCharacter(CharacterEntity):
         return False
 
     def q_learning_update(self, wrld: World, reward: float, alpha=0.2, gamma=0.9):
+        if not self.do_training:
+            return self.w_goal, self.w_monster, self.w_bomb_danger, self.w_explosion_danger
+
         me = wrld.me(self)
         if not me:
             me = self
