@@ -16,11 +16,19 @@ import atexit
 sys.path.insert(1, '../team04')
 from qlearningcharacter import QLearningCharacter as Character
 
+"""
+A self-sufficient training variant for training and scoring all other variants
+Will cycle through the enemies of all other variants (defined in training/maps.json) automatically for specified number of iterations
+Important details are commented
+"""
+
 with open('training/maps.json', 'r') as f:
     maps = json.load(f)
 
 results: dict[str, str | dict[str, dict[str, int]]] = { }
 
+# Do we do training?
+# If false, will run all variant
 do_training = False
 
 def addMonsters(g: Game, data: None | str | list[list[dict]]):
@@ -64,9 +72,11 @@ def generateGame(index) -> Game:
 g = None
 random.seed()
 
+# Number of times to run each variant, set negative to run until ctrl+c
 max_iterations = 50
 iterations = 0
 
+# Print results on any kind of exit
 def on_close():
     print('Iterations Ran', iterations)
     if not do_training: print('Not Training!')
@@ -92,7 +102,6 @@ def on_close():
             if runs > 0:
                 print('\t{} | {} | {}'.format(successes / runs, fails / runs, (runs - successes - fails) / runs))
             print(*map(lambda s: '\t' + str(s), data.items()), sep='\n')
-
 atexit.register(on_close)
 
 while iterations != max_iterations:
