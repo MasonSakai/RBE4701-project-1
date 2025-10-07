@@ -6,7 +6,7 @@
     },
     {
         "name": "variant2",
-        "train": true,
+        "train": false,
         "monsters": [
             {
                 "variant": 0,

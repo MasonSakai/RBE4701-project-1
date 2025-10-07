@@ -18,7 +18,7 @@ class QLearningCharacter(CharacterEntity):
     w_goal: float = 10
     w_monster: float = -5
     w_bomb_danger: float = 1
-    w_explosion_danger: float = -3
+    w_explosion_danger: float = -10
     saved_weights = False
     weight_file: str
     saved_dist: float = None
@@ -77,10 +77,10 @@ class QLearningCharacter(CharacterEntity):
                 dist_b = self.dist((me.x, me.y), (bomb.x, bomb.y))
                 if dist_b < min_dist_to_bomb:
                     min_dist_to_bomb = dist_b
-            feat_bomb_danger = max(0, (wrld.expl_range - min_dist_to_bomb) / wrld.expl_range)
+            feat_bomb_danger = max(0, 1 - (min_dist_to_bomb / wrld.expl_range))
         return feat_bomb_danger
 
-    def out_of_bomb_danger(self, wrld: SensedWorld) -> float:
+    def out_of_bomb_danger(self, wrld: SensedWorld) -> bool:
         me = wrld.me(self)
         if not me:
             me = self
@@ -88,7 +88,7 @@ class QLearningCharacter(CharacterEntity):
         bombs = self.find_bombs_for_wall(wrld, me.x, me.y)
         bombs = list(filter(lambda b: b.timer < 2, bombs))
 
-        return len(bombs)
+        return len(bombs) == 0
 
     def calculate_goal_feature(self, wrld: SensedWorld, me: CharacterEntity) -> tuple[float, tuple[int, int]]:
         dist_goal, first_step = self.find_path(wrld)
@@ -345,7 +345,7 @@ class QLearningCharacter(CharacterEntity):
         if not me:
             me = self
 
-        print("Qlearning update", reward)
+        #print("Qlearning update", reward)
 
         goal_feat, _ = self.calculate_goal_feature(wrld, me)
         feature_monster = self.calculate_monster_component(wrld, me)
@@ -375,53 +375,36 @@ class QLearningCharacter(CharacterEntity):
 
         return new_w_goal, new_w_monster, new_w_bomb_danger, new_w_explosion_danger
 
-    def calc_reward(self, wrld: World, v_exmax: float, a_exmax: tuple[int, int] | bool, d_goal: float, p_path: tuple[int, int]) -> float:
+    def calc_reward(self, wrld: World, v_exmax: float, a_exmax: tuple[int, int] | bool) -> float:
+        reward = 0
+
         if not self.out_of_bomb_danger(wrld):
-            return -1
+            reward -= 5
+        
+        (d_goal, p_path) = self.find_path(wrld)
 
         dx = p_path[0] - self.x
         dy = p_path[1] - self.y
 
         if wrld.wall_at(*p_path):
-            return 2 if a_exmax == True else -0.2
+            reward += 2 if a_exmax == True else 0
         elif a_exmax == True:
-            return 0.5
-        elif isinstance(a_exmax, tuple):
-            return (a_exmax[0] * dx + a_exmax[1] * dy)# + (1 / (1 + d_goal) - 0.9)
-        else:
-            print("Error, a_exmax is", a_exmax, v_exmax)
+            reward += 1
+        
+        if isinstance(a_exmax, tuple):
+            reward += (a_exmax[0] * dx + a_exmax[1] * dy) * 0.25
 
-        """
-        reward based on distance
-        small base reward
-        scale reward based on time
-        punishment for standing still too long
-        """
-    
-    # ------------------------------------------------------------------------------------------------------------------
-    # Pre-state machine do function
-    # ------------------------------------------------------------------------------------------------------------------
-    # ------------------------------------------------------------------------------------------------------------------
-    # ------------------------------------------------------------------------------------------------------------------
-    # def do(self, wrld: World):
-    #     value, best_action = self.get_action(wrld)
-    #     (dist, next) = self.find_path(wrld)
-    #     reward = self.calc_reward(wrld, value, best_action, dist, next)
-    #     print(value, best_action, dist, next, reward)
+        for m_list in wrld.monsters.values():
+            m: MonsterEntity
+            for m in m_list:
+                d_m = self.dist((m.x, m.y), (self.x, self.y))
+                nd_m = 1 - d_m / self.monster_engage_distance
+                if nd_m <= 0:
+                    continue
+                reward -= nd_m - 0.75
+        
+        return reward
 
-    #     candidate_weights = self.q_learning_update(wrld, reward)
-    #     # print(candidate_weights)
-
-    #     self.w_goal, self.w_monster, self.w_bomb_danger, self.w_explosion_danger = candidate_weights
-    #     if isinstance(best_action, tuple):
-    #         self.move(best_action[0], best_action[1])
-    #     elif best_action == True:
-    #         self.place_bomb()
-    #     else:
-    #         return
-    # ------------------------------------------------------------------------------------------------------------------
-    # ------------------------------------------------------------------------------------------------------------------
-    # ------------------------------------------------------------------------------------------------------------------
 
     def find_safe_flee_spot(self, wrld: World) -> tuple[int, int] | None:
         me_x, me_y = self.x, self.y
@@ -441,9 +424,12 @@ class QLearningCharacter(CharacterEntity):
         self.is_monster = self.in_monster_range(wrld)
         if self.is_monster:
             self.flee_target = None
-            _, best_action = self.get_action(wrld)
+            value, best_action = self.get_action(wrld)
             #print("Qlearning", best_action)
-            
+
+            reward = self.calc_reward(wrld, value, best_action)
+            self.w_goal, self.w_monster, self.w_bomb_danger, self.w_explosion_danger = self.q_learning_update(wrld, reward)
+
             if isinstance(best_action, tuple):
                 self.move(*best_action)
             elif best_action == True:
@@ -492,12 +478,12 @@ class QLearningCharacter(CharacterEntity):
         event: Event
         for event in wrld.events:
             if event.tpe == Event.CHARACTER_FOUND_EXIT and event.character == self:
-                reward += 10
+                reward += 20
             elif event.tpe == Event.CHARACTER_KILLED_BY_MONSTER and event.character == self:
                 reward -= 10
             elif event.tpe == Event.BOMB_HIT_CHARACTER and event.other == self:
                 if self.is_monster:
-                    reward -= 5
+                    reward -= 15
                 else:
                     print("Killed self:", (self.x, self.y), self.flee_target, self.is_monster)
                     #raise Exception("Why?")
