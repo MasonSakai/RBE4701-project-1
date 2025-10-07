@@ -17,8 +17,7 @@ import time
 class QLearningCharacter(CharacterEntity):
     w_goal: float = 10
     w_monster: float = -5
-    w_bomb_danger: float = 0.5
-    w_bomb_potential: float = 0
+    w_bomb_danger: float = 1
     w_explosion_danger: float = -3
     saved_weights = False
     weight_file: str
@@ -39,9 +38,8 @@ class QLearningCharacter(CharacterEntity):
                 self.w_goal = float(wfile.readline())
                 self.w_monster = float(wfile.readline())
                 self.w_bomb_danger = float(wfile.readline())
-                self.w_bomb_potential = float(wfile.readline())
                 self.w_explosion_danger = float(wfile.readline())
-            print("Loaded weights: ", self.w_goal, ", ", self.w_monster, ", ", self.w_bomb_danger, ", ", self.w_bomb_potential, ", ", self.w_explosion_danger, sep='')
+            print("Loaded weights: ", self.w_goal, ", ", self.w_monster, ", ", self.w_bomb_danger, ", ", self.w_explosion_danger, sep='')
         except Exception as e:
             print("Failed to read weights:", e)
     
@@ -57,8 +55,7 @@ class QLearningCharacter(CharacterEntity):
                 wfile.writelines([
                     str(self.w_goal), '\n',
                     str(self.w_monster), '\n',
-                    str(self.w_bomb_danger), '\n', 
-                    str(self.w_bomb_potential), '\n',
+                    str(self.w_bomb_danger), '\n',
                     str(self.w_explosion_danger),
                 ])
             print("Successfully saved weights")
@@ -80,7 +77,7 @@ class QLearningCharacter(CharacterEntity):
                 dist_b = self.dist((me.x, me.y), (bomb.x, bomb.y))
                 if dist_b < min_dist_to_bomb:
                     min_dist_to_bomb = dist_b
-            feat_bomb_danger = 1.0 / (min_dist_to_bomb + 1.0)
+            feat_bomb_danger = max(0, (wrld.expl_range - min_dist_to_bomb) / wrld.expl_range)
         return feat_bomb_danger
 
     def out_of_bomb_danger(self, wrld: SensedWorld) -> float:
@@ -93,25 +90,6 @@ class QLearningCharacter(CharacterEntity):
 
         return len(bombs)
 
-    def calculate_bomb_potential(self, wrld: World, me: CharacterEntity, first_step: tuple[int, int]) -> float:
-        def adjacent_pos(x: int, y: int):
-            for (dx, dy) in [(1, 0), (0, 1), (-1, 0), (0, -1)]:
-                if x + dx < 0 or x + dx >= wrld.width(): continue
-                if y + dy < 0 or y + dy >= wrld.height(): continue
-                if wrld.wall_at(x + dx, y + dy): return True
-            return False
-
-
-        if first_step is None:
-            return 0.0
-
-        if (bomb := self.find_bomb(wrld, me)) is not None:
-            return adjacent_pos(bomb.x, bomb.y)
-
-        adjacent_pos(me.x, me.y)
-        
-        return 0.0
-    
     def calculate_goal_feature(self, wrld: SensedWorld, me: CharacterEntity) -> tuple[float, tuple[int, int]]:
         dist_goal, first_step = self.find_path(wrld)
         
@@ -139,14 +117,13 @@ class QLearningCharacter(CharacterEntity):
         if not me:
             me = self
 
-        goal_feat, first_step = self.calculate_goal_feature(wrld, me)
+        goal_feat, _ = self.calculate_goal_feature(wrld, me)
         feature_monster = self.calculate_monster_component(wrld, me)
         feat_bomb_danger = self.calculate_bomb_danger(wrld, me)
         feat_expl_danger = self.out_of_bomb_danger(wrld)
-        feat_bomb_potential = self.calculate_bomb_potential(wrld, me, first_step)
         if feat_expl_danger == None:
             feat_expl_danger = 0
-        q_value = self.w_goal * goal_feat + self.w_monster * feature_monster + self.w_bomb_danger * feat_bomb_danger + self.w_bomb_potential * feat_bomb_potential + self.w_explosion_danger * feat_expl_danger
+        q_value = self.w_goal * goal_feat + self.w_monster * feature_monster + self.w_bomb_danger * feat_bomb_danger + self.w_explosion_danger * feat_expl_danger
         
         return q_value
 
@@ -185,13 +162,23 @@ class QLearningCharacter(CharacterEntity):
                 bombs.append(bomb)
         return bombs
     
-    def find_path(self, wrld: SensedWorld, mind_monster = False):
-        def monster_in_range(p):
-            for m_list in wrld.monsters.values():
-                for m in m_list:
-                    if self.dist((m.x, m.y), p) < self.monster_engage_distance:
-                        return True
-            return False
+    def find_path(self, wrld: SensedWorld):
+        def monster_score(m: MonsterEntity, p: tuple[int, int]) -> float:
+            s_dist = self.monster_engage_distance - self.dist((m.x, m.y), p)
+
+            if s_dist <= 0:
+                return 0
+            
+            l_dp = self.dist(p, (m.x, m.y))
+            l_dd = math.sqrt(m.dx * m.dx + m.dy * m.dy)
+            if l_dd == 0 or l_dp == 0:
+                return s_dist
+
+            s_dot = m.dx * (p[0] - m.x) + m.dy * (p[1] - m.y)
+            s_dot /= l_dp
+            s_dot /= l_dd
+
+            return max(0, s_dist * 2 + s_dot * 0.25)
 
         me = wrld.me(self)
         if not me:
@@ -217,18 +204,19 @@ class QLearningCharacter(CharacterEntity):
             for neighbor in self.get_neighbors(wrld, pos):
                 new_cost = cost_so_far[pos] + 1
 
-                if wrld.wall_at(neighbor[0], neighbor[1]):
+                if wrld.wall_at(*neighbor):
                     m = -1
-                    for bomb in self.find_bombs_for_wall(wrld, neighbor[0], neighbor[1]):
+                    for bomb in self.find_bombs_for_wall(wrld, *neighbor):
                         m = max(m, bomb.timer)
                     if m < 0:
                         m = wrld.bomb_time
                     new_cost += m + wrld.expl_duration
-                elif (expl := wrld.explosion_at(neighbor[0], neighbor[1])):
+                elif (expl := wrld.explosion_at(*neighbor)):
                     new_cost += expl.timer
 
-                if mind_monster and monster_in_range(neighbor):
-                    new_cost += 2
+                for m_list in wrld.monsters.values():
+                    for m in m_list:
+                        new_cost += monster_score(m, neighbor)
 
                 if neighbor not in cost_so_far or new_cost < cost_so_far[neighbor]:
                     cost_so_far[neighbor] = new_cost
@@ -359,10 +347,9 @@ class QLearningCharacter(CharacterEntity):
 
         print("Qlearning update", reward)
 
-        goal_feat, first_step = self.calculate_goal_feature(wrld, me)
+        goal_feat, _ = self.calculate_goal_feature(wrld, me)
         feature_monster = self.calculate_monster_component(wrld, me)
         feat_bomb_danger = self.calculate_bomb_danger(wrld, me)
-        feat_bomb_potential = self.calculate_bomb_potential(wrld, me, first_step)
         feat_expl_danger = self.out_of_bomb_danger(wrld)
         if feat_expl_danger == None:
             feat_expl_danger = 0
@@ -384,10 +371,9 @@ class QLearningCharacter(CharacterEntity):
         new_w_goal = self.w_goal + alpha * delta * goal_feat
         new_w_monster = self.w_monster + alpha * delta * feature_monster
         new_w_bomb_danger = self.w_bomb_danger + alpha * delta * feat_bomb_danger
-        new_w_bomb_potential = self.w_bomb_potential + alpha * delta * feat_bomb_potential
-        new_w_explosion_danger = self.w_bomb_potential + alpha * delta * feat_expl_danger
+        new_w_explosion_danger = self.w_explosion_danger + alpha * delta * feat_expl_danger
 
-        return new_w_goal, new_w_monster, new_w_bomb_danger, new_w_bomb_potential, new_w_explosion_danger
+        return new_w_goal, new_w_monster, new_w_bomb_danger, new_w_explosion_danger
 
     def calc_reward(self, wrld: World, v_exmax: float, a_exmax: tuple[int, int] | bool, d_goal: float, p_path: tuple[int, int]) -> float:
         if not self.out_of_bomb_danger(wrld):
@@ -426,7 +412,7 @@ class QLearningCharacter(CharacterEntity):
     #     candidate_weights = self.q_learning_update(wrld, reward)
     #     # print(candidate_weights)
 
-    #     self.w_goal, self.w_monster, self.w_bomb_danger, self.w_bomb_potential, self.w_explosion_danger = candidate_weights
+    #     self.w_goal, self.w_monster, self.w_bomb_danger, self.w_explosion_danger = candidate_weights
     #     if isinstance(best_action, tuple):
     #         self.move(best_action[0], best_action[1])
     #     elif best_action == True:
@@ -456,7 +442,7 @@ class QLearningCharacter(CharacterEntity):
         if self.is_monster:
             self.flee_target = None
             _, best_action = self.get_action(wrld)
-            print("Qlearning", best_action)
+            #print("Qlearning", best_action)
             
             if isinstance(best_action, tuple):
                 self.move(*best_action)
@@ -468,31 +454,31 @@ class QLearningCharacter(CharacterEntity):
 
         if not bomb and self.flee_target:
             self.flee_target = None
-            print("Cleared bomb")
+            #print("Cleared bomb")
         elif bomb and not self.flee_target:
             self.flee_target = self.find_safe_flee_spot(wrld)
-            print("found bomb", bomb.timer, self.flee_target)
+            #print("found bomb", bomb.timer, self.flee_target)
 
         if self.flee_target:
             dx = self.flee_target[0] - self.x
             dy = self.flee_target[1] - self.y
             self.move(dx, dy)
-            print("Fleeing", dx, dy, bomb.timer)
+            #print("Fleeing", dx, dy, bomb.timer)
             return
 
-        _, next_step = self.find_path(wrld, True)
+        _, next_step = self.find_path(wrld)
         if next_step:
             if expl := wrld.explosion_at(*next_step):
                 self.move(0, 0)
-                print("pathing waiting", expl.timer)
+                #print("pathing waiting", expl.timer)
             elif wrld.wall_at(*next_step):
                 self.place_bomb()
-                print("pathing bomb")
+                #print("pathing bomb")
             else:
                 dx = next_step[0] - self.x
                 dy = next_step[1] - self.y
                 self.move(dx, dy)
-                print("pathing", dx, dy)
+                #print("pathing", dx, dy)
             
         
     def done(self, wrld: SensedWorld):
@@ -513,8 +499,8 @@ class QLearningCharacter(CharacterEntity):
                 if self.is_monster:
                     reward -= 5
                 else:
-                    print((self.x, self.y), self.flee_target, self.is_monster)
-                    raise Exception("Why?")
+                    print("Killed self:", (self.x, self.y), self.flee_target, self.is_monster)
+                    #raise Exception("Why?")
 
             name = str(event)
             if agent_state not in self.results_data:
@@ -533,7 +519,7 @@ class QLearningCharacter(CharacterEntity):
                 self.results_data[agent_state][name] = 0
             self.results_data[agent_state][name] += 1
         
-        self.w_goal, self.w_monster, self.w_bomb_danger, self.w_bomb_potential, self.w_explosion_danger = self.q_learning_update(wrld, reward)
+        self.w_goal, self.w_monster, self.w_bomb_danger, self.w_explosion_danger = self.q_learning_update(wrld, reward)
 
         self.save_weights()
         
