@@ -19,7 +19,7 @@ from qlearningcharacter import QLearningCharacter as Character
 with open('training/maps.json', 'r') as f:
     maps = json.load(f)
 
-results = { }
+results: dict[str, str | dict[str, dict[str, int]]] = { }
 
 def addMonsters(g: Game, data: None | str | list[list[dict]]):
     if not data:
@@ -71,7 +71,20 @@ def on_close():
         if isinstance(data, str):
             print("{}: {}".format(name, data))
         else:
-            print(name)
+            successes = 0
+            fails = 0
+            runs = 0
+            for d_list in data.values():
+                for k, d in d_list.items():
+                    runs += d
+                    if k == 'me found the exit':
+                        successes += d
+                    if k == 'me killed itself' or 'me was killed by ' in k:
+                        fails += d
+
+            print('{}: {} | {} | {}'.format(name, fails, successes, runs - successes - fails))
+            if runs > 0:
+                print('\t{} | {} | {}'.format(successes / runs, fails / runs, (runs - successes - fails) / runs))
             print(*map(lambda s: '\t' + str(s), data.items()), sep='\n')
 
 atexit.register(on_close)
