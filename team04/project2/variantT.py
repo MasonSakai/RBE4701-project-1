@@ -62,7 +62,7 @@ def generateGame(index) -> Game:
 g = None
 random.seed()
 
-max_iterations = 50
+max_iterations = 5
 iterations = 0
 
 def on_close():
@@ -76,20 +76,23 @@ def on_close():
             runs = 0
             for d_list in data.values():
                 for k, d in d_list.items():
-                    runs += d
                     if k == 'me found the exit':
                         successes += d
-                    if k == 'me killed itself' or 'me was killed by ' in k:
+                        runs += d
+                    elif k == 'me killed itself' or 'me was killed by ' in k:
                         fails += d
+                        runs += d
+                    elif k == 'out of time':
+                        runs += d
 
-            print('{}: {} | {} | {}'.format(name, fails, successes, runs - successes - fails))
+            print('{}: {} | {} | {} of {}'.format(name, successes, fails, runs - successes - fails, runs))
             if runs > 0:
                 print('\t{} | {} | {}'.format(successes / runs, fails / runs, (runs - successes - fails) / runs))
             print(*map(lambda s: '\t' + str(s), data.items()), sep='\n')
 
 atexit.register(on_close)
 
-while iterations < max_iterations:
+while iterations != max_iterations:
     iterations += 1
     for index in range(len(maps)):
         # Create the game
