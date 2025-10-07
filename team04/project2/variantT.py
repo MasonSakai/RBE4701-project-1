@@ -62,7 +62,7 @@ def generateGame(index) -> Game:
 g = None
 random.seed()
 
-max_iterations = 5
+max_iterations = -1
 iterations = 0
 
 def on_close():

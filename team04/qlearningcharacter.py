@@ -18,7 +18,7 @@ class QLearningCharacter(CharacterEntity):
     w_goal: float = 10
     w_monster: float = -5
     w_bomb_danger: float = 1
-    w_explosion_danger: float = -10
+    w_explosion_danger: float = 10
     saved_weights = False
     weight_file: str
     saved_dist: float = None
