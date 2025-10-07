@@ -19,7 +19,7 @@
     },
     {
         "name": "variant3",
-        "train": true,
+        "train": false,
         "monsters": [
             {
                 "variant": 1,
