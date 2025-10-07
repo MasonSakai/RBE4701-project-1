@@ -21,6 +21,11 @@ class QLearningCharacter(CharacterEntity):
     w_bomb_potential: float = 0
     w_explosion_danger: float = 0
     saved_weights = False
+    agent_state = "PATHING"
+    wait_timer = 0
+    # Random cost, we can tweak this later
+    monster_engage_distance = 10
+    flee_target = None
 
     def __init__(self, name, avatar, x, y):
         super().__init__(name, avatar, x, y)
@@ -32,11 +37,6 @@ class QLearningCharacter(CharacterEntity):
                 self.w_bomb_danger = float(wfile.readline())
                 self.w_bomb_potential = float(wfile.readline())
                 self.w_explosion_danger = float(wfile.readline())
-                self.agent_state = "PATHING"
-                self.wait_timer = 0
-                # Random cost, we can tweak this later
-                self.monster_engage_distance = 10
-                self.flee_target = None
             print("Loaded weights: ", self.w_goal, ", ", self.w_monster, ", ", self.w_bomb_danger, ", ", self.w_bomb_potential, ", ", self.w_explosion_danger, sep='')
         except Exception as e:
             print("Failed to read weights:", e)
