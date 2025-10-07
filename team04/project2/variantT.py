@@ -1,5 +1,4 @@
 # This is necessary to find the main code
-from io import TextIOWrapper
 import sys
 
 sys.path.insert(0, '../../bomberman')
@@ -12,7 +11,6 @@ from monsters.stupid_monster import StupidMonster
 from monsters.selfpreserving_monster import SelfPreservingMonster
 from sensed_world import SensedWorld
 import json
-import os
 import atexit
 
 sys.path.insert(1, '../team04')
@@ -21,15 +19,7 @@ from qlearningcharacter import QLearningCharacter as Character
 with open('training/maps.json', 'r') as f:
     maps = json.load(f)
 
-log_file: TextIOWrapper = None
-
-def extract_weights(data: list[dict]) -> list[float]:
-    def extract_weight(d: dict) -> float:
-        if 'weight' in d:
-            return d['weight']
-        return 1
-
-    return list(map(extract_weight, data))
+results = { }
 
 def addMonsters(g: Game, data: None | str | list[list[dict]]):
     if not data:
@@ -41,8 +31,6 @@ def addMonsters(g: Game, data: None | str | list[list[dict]]):
     if not data or len(data) == 0:
         return
 
-    data = random.choices(data, weights=extract_weights(data), k=1)[0]
-
     for d in data:
         monster = None
         v = d["variant"]
@@ -53,59 +41,46 @@ def addMonsters(g: Game, data: None | str | list[list[dict]]):
         
         if monster:
             g.add_monster(monster)
-def addCharacter(g: Game, data: str | list[dict]):
-    if isinstance(data, str):
-        data = maps["characters"][data]
-
-    d = random.choices(data, weights=extract_weights(data), k=1)[0]
-
-    g.add_character(Character(d["name"], d["avatar"], d["x"], d["y"], log_file))
-def generateGame() -> Game:
-    data = maps["maps"]
-    mapData = random.choices(data, weights=extract_weights(data), k=1)[0]
-
-    g = Game.fromfile('training/maps/' + mapData["file"])
+def generateGame(index) -> Game:
+    data = maps[index]
     
-    addMonsters(g, mapData["monsters"])
-    addCharacter(g, mapData["characters"])
+    if data["train"] == False:
+        results[data['name']] = "Not Played"
+        return None
+
+    if data['name'] not in results:
+        results[data['name']] = { }
+
+    g = Game.fromfile('map.txt')
+    
+    addMonsters(g, data["monsters"])
+    
+    g.add_character(Character("me", 'C', 0, 0, data['name'], results[data['name']]))
 
     return g
 
 g = None
 random.seed()
-while True:
-    name = "training/logs/{}.txt".format(hex(random.getrandbits(32)))
-    if not os.path.exists(name):
-        log_file = open(name, 'w')
-        break
+
+iterations = 50
 
 def on_close():
-    log_file.close()
+    print(iterations, *results.items(), sep='\n')
 
 atexit.register(on_close)
 
-i = 50
-log_file.write('Starting iterations: {}\n'.format(i))
+while iterations > 0:
+    iterations -= 1
+    for index in range(len(maps)):
+        # Create the game
+        g = generateGame(index)
 
-while i > 0:
-    log_file.writelines([ str(random.getstate()), '\n' ])
-
-    # Create the game
-    g = generateGame()
-
-    # Run!
-    g.go(True)
-    if g.world.time <= 0:
-        wrld = SensedWorld.from_world(g.world)
-        cl: list[Character]
-        for cl in g.world.characters.values():
-            for c in cl:
-                c.done(wrld)
-
-
-    print(*g.events, sep=', ')
-    log_file.write('events: ')
-    log_file.writelines(map(lambda e: '{}, '.format(str(e)), g.world.events))
-    log_file.write('\n  ----\n')
-
-    i -= 1
+        # Run!
+        if g:
+            g.go(True)
+            if g.world.time <= 0:
+                wrld = SensedWorld.from_world(g.world)
+                cl: list[Character]
+                for cl in g.world.characters.values():
+                    for c in cl:
+                        c.done(wrld)

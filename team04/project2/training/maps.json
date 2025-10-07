@@ -1,82 +1,69 @@
-{
-    "maps": [
-        {
-            "file": "map1.txt",
-            "monsters": "monsters10x18",
-            "characters": "characters10x18",
-            "weight": 4
-        },
-        {
-            "file": "map2.txt",
-            "monsters": "monsters10x18",
-            "characters": "characters10x18",
-            "weight": 1
-        }
-    ],
-    "monsters": {
-        "monsters10x18": [
-            [],
-            [
-                {
-                    "variant": 0,
-                    "name": "stupid",
-                    "avatar": "S",
-                    "x": 3,
-                    "y": 9,
-                    "weight": 6
-                }
-            ],
-            [
-                {
-                    "variant": 1,
-                    "name": "selfpreserving",
-                    "avatar": "S",
-                    "range": 1,
-                    "x": 3,
-                    "y": 9,
-                    "weight": 2
-                }
-            ],
-            [
-                {
-                    "variant": 1,
-                    "name": "aggressive",
-                    "avatar": "A",
-                    "range": 2,
-                    "x": 3,
-                    "y": 13,
-                    "weight": 2
-                }
-            ],
-            [
-                {
-                    "variant": 0,
-                    "name": "stupid",
-                    "avatar": "S",
-                    "x": 3,
-                    "y": 5,
-                    "weight": 2
-                },
-                {
-                    "variant": 1,
-                    "name": "aggressive",
-                    "avatar": "A",
-                    "range": 2,
-                    "x": 3,
-                    "y": 13,
-                    "weight": 1
-                }
-            ]
+[
+    {
+        "name": "variant1",
+        "train": false,
+        "monsters": []
+    },
+    {
+        "name": "variant2",
+        "train": true,
+        "monsters": [
+            {
+                "variant": 0,
+                "name": "stupid",
+                "avatar": "S",
+                "x": 3,
+                "y": 9
+            }
         ]
     },
-    "characters": {
-        "characters10x18": [
+    {
+        "name": "variant3",
+        "train": true,
+        "monsters": [
             {
-                "name": "me",
-                "avatar": "C",
-                "x": 0,
-                "y": 0
+                "variant": 1,
+                "name": "selfpreserving",
+                "avatar": "S",
+                "range": 1,
+                "x": 3,
+                "y": 9
+            }
+        ]
+    },
+    {
+        "name": "variant4",
+        "train": true,
+        "monsters": [
+            {
+                "variant": 1,
+                "name": "aggressive",
+                "avatar": "A",
+                "range": 2,
+                "x": 3,
+                "y": 13
+            }
+        ]
+    },
+    {
+        "name": "variant5",
+        "train": true,
+        "monsters": [
+            {
+                "variant": 0,
+                "name": "stupid",
+                "avatar": "S",
+                "x": 3,
+                "y": 5
+            },
+            {
+                "variant": 1,
+                "name": "aggressive",
+                "avatar": "A",
+                "range": 2,
+                "x": 3,
+                "y": 13
             }
         ]
     }
-}
+]

@@ -21,19 +21,23 @@ class QLearningCharacter(CharacterEntity):
     w_bomb_potential: float = 0
     w_explosion_danger: float = -3
     saved_weights = False
+    weight_file: str
     saved_dist: float = None
+    results_data: dict[str, int]
     
     agent_state = "PATHING"
     wait_timer = 0
     # Random cost, we can tweak this later
-    monster_engage_distance = 10
+    monster_engage_distance = 5
     flee_target = None
 
-    def __init__(self, name, avatar, x, y):
+    def __init__(self, name, avatar, x, y, weight_file_name, results_data = {}):
         super().__init__(name, avatar, x, y)
+        self.weight_file = "training/{}.txt".format(weight_file_name)
+        self.results_data = results_data
         
         try: # Load weights from file
-            with open("QLearningWeights.txt", 'r') as wfile:
+            with open(self.weight_file, 'r') as wfile:
                 self.w_goal = float(wfile.readline())
                 self.w_monster = float(wfile.readline())
                 self.w_bomb_danger = float(wfile.readline())
@@ -51,7 +55,7 @@ class QLearningCharacter(CharacterEntity):
             return
         
         try: # Save weights to file
-            with open("QLearningWeights.txt", 'w') as wfile:
+            with open(self.weight_file, 'w') as wfile:
                 wfile.writelines([
                     str(self.w_goal), '\n',
                     str(self.w_monster), '\n',
@@ -159,7 +163,7 @@ class QLearningCharacter(CharacterEntity):
                         goals.add((x, y))
             return goals
     
-    def get_neighbors(self, wrld: SensedWorld, pos: tuple[int, int]) -> list[tuple[int, int]]:
+    def get_neighbors(self, wrld: SensedWorld, pos: tuple[int, int], strictly_empty = False) -> list[tuple[int, int]]:
         neighbors = list()
         for x in range(-1, 2, 1):
             if pos[0] + x < 0 or pos[0] + x >= wrld.width():
@@ -167,9 +171,9 @@ class QLearningCharacter(CharacterEntity):
             for y in range(-1, 2, 1):
                 if pos[1] + y < 0 or pos[1] + y >= wrld.height():
                     continue
-                if wrld.empty_at(pos[0] + x, pos[1] + y) or wrld.exit_at(pos[0] + x, pos[1] + y) or wrld.explosion_at(pos[0] + x, pos[1] + y):
+                if wrld.empty_at(pos[0] + x, pos[1] + y) or wrld.exit_at(pos[0] + x, pos[1] + y) or (not strictly_empty and wrld.explosion_at(pos[0] + x, pos[1] + y)):
                     neighbors.append((pos[0] + x, pos[1] + y))
-                elif (x == 0 or y == 0) and wrld.wall_at(pos[0] + x, pos[1] + y):
+                elif not strictly_empty and (x == 0 or y == 0) and wrld.wall_at(pos[0] + x, pos[1] + y):
                     neighbors.append((pos[0] + x, pos[1] + y))
         return neighbors
     
@@ -299,63 +303,39 @@ class QLearningCharacter(CharacterEntity):
                 best_value = val
         return best_value, best_action
     
-    def find_path_to_goals(self, wrld: SensedWorld, goals: set[tuple[int, int]]):
+    def in_monster_range(self, wrld: SensedWorld, monsters: set[tuple[int, int]]) -> bool:
         me = wrld.me(self)
         if not me:
             me = self
         start_pos = (me.x, me.y)
 
-        if not goals:
-            return float("inf"), None
+        if not monsters:
+            return False
 
         queue = PriorityQueue()
-        came_from = {start_pos: None}
         cost_so_far = {start_pos: 0}
 
-        found_goal = None
         queue.put((0, start_pos))
 
         while not queue.empty():
             _, pos = queue.get(False)
 
-            if pos in goals:
-                found_goal = pos
-                break
+            if pos in monsters:
+                return True
 
-            for neighbor in self.get_neighbors(wrld, pos):
+            for neighbor in self.get_neighbors(wrld, pos, True):
                 new_cost = cost_so_far[pos] + 1
-
-                if wrld.wall_at(neighbor[0], neighbor[1]):
-                    m = -1
-                    for bomb in self.find_bombs_for_wall(wrld, neighbor[0], neighbor[1]):
-                        m = max(m, bomb.timer)
-                    if m < 0:
-                        m = wrld.bomb_time
-                    new_cost += m + wrld.expl_duration
-                elif (expl := wrld.explosion_at(neighbor[0], neighbor[1])):
-                    new_cost += expl.timer
+                if new_cost >= self.monster_engage_distance:
+                    continue
 
                 if neighbor not in cost_so_far or new_cost < cost_so_far[neighbor]:
                     cost_so_far[neighbor] = new_cost
-                    priority = new_cost + min(self.dist(g, neighbor) for g in goals)
+                    priority = new_cost + min(self.dist(g, neighbor) for g in monsters)
                     queue.put((priority, neighbor))
-                    came_from[neighbor] = pos
+        
+        return False
 
-        if not found_goal:
-            return float("inf"), None
-
-        path = []
-        pos = found_goal
-        while pos is not None:
-            path.append(pos)
-            pos = came_from[pos]
-        path.reverse()
-
-        first_step = path[1] if len(path) > 1 else None
-
-        return cost_so_far[found_goal], first_step
-
-    def q_learning_update(self, wrld: World, reward: float, alpha=0.5, gamma=0.9):
+    def q_learning_update(self, wrld: World, reward: float, alpha=0.2, gamma=0.9):
         me = wrld.me(self)
         if not me:
             me = self
@@ -459,6 +439,9 @@ class QLearningCharacter(CharacterEntity):
         
 
     def do(self, wrld: World):
+        if not self.saved_dist:
+            (self.saved_dist, _) = self.find_path(wrld)
+
         if self.agent_state == "WAITING":
             if self.wait_timer > 0:
                 self.wait_timer -= 1
@@ -493,11 +476,7 @@ class QLearningCharacter(CharacterEntity):
                         if wrld.width() > neighbor[0] >= 0 and wrld.height() > neighbor[1] >= 0 and wrld.empty_at(neighbor[0], neighbor[1]):
                             adjacent_goals.add(neighbor)
                 
-                monster_dist = float('inf')
-                if adjacent_goals:
-                    monster_dist, _ = self.find_path_to_goals(wrld, goals=adjacent_goals)
-                
-                if monster_dist < self.monster_engage_distance:
+                if self.in_monster_range(wrld, monsters=adjacent_goals):
                     self.agent_state = "Q_LEARNING"
                     return
 
@@ -524,7 +503,6 @@ class QLearningCharacter(CharacterEntity):
                     dx = next_step[0] - self.x
                     dy = next_step[1] - self.y
                     self.move(dx, dy)
-                    time.sleep(1) 
 
         elif self.agent_state == "Q_LEARNING":
             monster_coords = set()
@@ -542,12 +520,8 @@ class QLearningCharacter(CharacterEntity):
                     neighbor = (mx + dx, my + dy)
                     if wrld.width() > neighbor[0] >= 0 and wrld.height() > neighbor[1] >= 0 and wrld.empty_at(neighbor[0], neighbor[1]):
                         adjacent_goals.add(neighbor)
-
-            monster_dist = float('inf')
-            if adjacent_goals:
-                monster_dist, _ = self.find_path_to_goals(wrld, goals=adjacent_goals)
             
-            if monster_dist > self.monster_engage_distance:
+            if not self.in_monster_range(wrld, monsters=adjacent_goals):
                 self.agent_state = "PATHING"
                 return
 
@@ -567,13 +541,28 @@ class QLearningCharacter(CharacterEntity):
         event: Event
         for event in wrld.events:
             if event.tpe == Event.CHARACTER_FOUND_EXIT and event.character == self:
-                reward += 100
+                reward += 10
             elif event.tpe == Event.CHARACTER_KILLED_BY_MONSTER and event.character == self:
-                reward -= 1
+                reward -= 10
             elif event.tpe == Event.BOMB_HIT_CHARACTER and event.other == self:
-                reward -= 0.5
+                reward -= 5
+
+            name = str(event)
+            if name not in self.results_data:
+                self.results_data[name] = { }
+            if self.agent_state not in self.results_data[name]:
+                self.results_data[name][self.agent_state] = 0
+            self.results_data[name][self.agent_state] += 1
+
         if wrld.time <= 0:
             reward = -5
+
+            name = "out of time"
+            if name not in self.results_data:
+                self.results_data[name] = { }
+            if self.agent_state not in self.results_data[name]:
+                self.results_data[name][self.agent_state] = 0
+            self.results_data[name][self.agent_state] += 1
         
         self.w_goal, self.w_monster, self.w_bomb_danger, self.w_bomb_potential, self.w_explosion_danger = self.q_learning_update(wrld, reward)
 
