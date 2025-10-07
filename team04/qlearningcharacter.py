@@ -185,7 +185,14 @@ class QLearningCharacter(CharacterEntity):
                 bombs.append(bomb)
         return bombs
     
-    def find_path(self, wrld: SensedWorld):
+    def find_path(self, wrld: SensedWorld, mind_monster = False):
+        def monster_in_range(p):
+            for m_list in wrld.monsters.values():
+                for m in m_list:
+                    if self.dist((m.x, m.y), p) < self.monster_engage_distance:
+                        return True
+            return False
+
         me = wrld.me(self)
         if not me:
             me = self
@@ -219,6 +226,9 @@ class QLearningCharacter(CharacterEntity):
                     new_cost += m + wrld.expl_duration
                 elif (expl := wrld.explosion_at(neighbor[0], neighbor[1])):
                     new_cost += expl.timer
+
+                if mind_monster and monster_in_range(neighbor):
+                    new_cost += 2
 
                 if neighbor not in cost_so_far or new_cost < cost_so_far[neighbor]:
                     cost_so_far[neighbor] = new_cost
@@ -301,19 +311,22 @@ class QLearningCharacter(CharacterEntity):
                 best_value = val
         return best_value, best_action
     
-    def in_monster_range(self, wrld: SensedWorld) -> bool:
+    def in_monster_range(self, wrld: SensedWorld, start_pos = None) -> bool:
         me = wrld.me(self)
         if not me:
             me = self
-        start_pos = (me.x, me.y)
+        if not start_pos:
+            start_pos = (me.x, me.y)
 
-        
         monsters = set()
         for m_list in wrld.monsters.values():
             for m in m_list:
                 monsters.add((m.x, m.y))
 
         if not len(monsters):
+            return False
+        
+        if not any(map(lambda mp: self.dist(mp, start_pos) < self.monster_engage_distance, monsters)):
             return False
 
         queue = PriorityQueue()
@@ -428,18 +441,11 @@ class QLearningCharacter(CharacterEntity):
         me_x, me_y = self.x, self.y
         all_neighbors = self.get_neighbors(wrld, (me_x, me_y), strictly_pathable=True)
 
-        safe_diagonal_squares = []
         for pos in all_neighbors:
-            is_walkable = wrld.empty_at(pos[0], pos[1]) or wrld.exit_at(pos[0], pos[1])
-            is_diagonal = abs(pos[0] - me_x) == 1 and abs(pos[1] - me_y) == 1
-
-            if is_walkable and is_diagonal:
-                safe_diagonal_squares.append(pos)
+            if not len(self.find_bombs_for_wall(wrld, *pos)):
+                return pos
         
-        if safe_diagonal_squares:
-            return safe_diagonal_squares[0]
-        else:
-            return None
+        return None
         
 
     def do(self, wrld: World):
@@ -448,10 +454,12 @@ class QLearningCharacter(CharacterEntity):
 
         self.is_monster = self.in_monster_range(wrld)
         if self.is_monster:
+            self.flee_target = None
             _, best_action = self.get_action(wrld)
+            print("Qlearning", best_action)
             
             if isinstance(best_action, tuple):
-                self.move(best_action[0], best_action[1])
+                self.move(*best_action)
             elif best_action == True:
                 self.place_bomb()
             return
@@ -460,31 +468,31 @@ class QLearningCharacter(CharacterEntity):
 
         if not bomb and self.flee_target:
             self.flee_target = None
-            #print("Cleared bomb")
+            print("Cleared bomb")
         elif bomb and not self.flee_target:
             self.flee_target = self.find_safe_flee_spot(wrld)
-            #print("found bomb", bomb)
+            print("found bomb", bomb.timer, self.flee_target)
 
         if self.flee_target:
             dx = self.flee_target[0] - self.x
             dy = self.flee_target[1] - self.y
             self.move(dx, dy)
-            #print("Fleeing", dx, dy, bomb.timer)
+            print("Fleeing", dx, dy, bomb.timer)
             return
 
-        _, next_step = self.find_path(wrld)
+        _, next_step = self.find_path(wrld, True)
         if next_step:
             if expl := wrld.explosion_at(*next_step):
                 self.move(0, 0)
-                #print("pathing waiting", expl.timer)
+                print("pathing waiting", expl.timer)
             elif wrld.wall_at(*next_step):
                 self.place_bomb()
-                #print("pathing bomb")
+                print("pathing bomb")
             else:
                 dx = next_step[0] - self.x
                 dy = next_step[1] - self.y
                 self.move(dx, dy)
-                #print("pathing", dx, dy)
+                print("pathing", dx, dy)
             
         
     def done(self, wrld: SensedWorld):
@@ -502,7 +510,11 @@ class QLearningCharacter(CharacterEntity):
             elif event.tpe == Event.CHARACTER_KILLED_BY_MONSTER and event.character == self:
                 reward -= 10
             elif event.tpe == Event.BOMB_HIT_CHARACTER and event.other == self:
-                reward -= 5
+                if self.is_monster:
+                    reward -= 5
+                else:
+                    print((self.x, self.y), self.flee_target, self.is_monster)
+                    raise Exception("Why?")
 
             name = str(event)
             if agent_state not in self.results_data:

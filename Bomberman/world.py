@@ -166,6 +166,7 @@ class World:
         clist = self.characters_at(x,y)
         if clist:
             for c in clist:
+                self.printit()
                 ev.append(Event(Event.BOMB_HIT_CHARACTER, bomb.owner, c))
                 self.remove_character(c)
         # Return collected events
