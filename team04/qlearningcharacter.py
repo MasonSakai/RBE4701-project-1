@@ -12,6 +12,7 @@ from world import World
 from events import Event
 import math
 from queue import PriorityQueue
+import time
 
 class QLearningCharacter(CharacterEntity):
     w_goal: float = 0
@@ -21,7 +22,7 @@ class QLearningCharacter(CharacterEntity):
     w_explosion_danger: float = 0
     saved_weights = False
 
-    def __init__(self, name, avatar, x, y, log_file: TextIOWrapper):
+    def __init__(self, name, avatar, x, y):
         super().__init__(name, avatar, x, y)
         
         try: # Load weights from file
@@ -31,7 +32,12 @@ class QLearningCharacter(CharacterEntity):
                 self.w_bomb_danger = float(wfile.readline())
                 self.w_bomb_potential = float(wfile.readline())
                 self.w_explosion_danger = float(wfile.readline())
-            print("Loaded weights: ", self.w_goal, ", ", self.w_monster, ", ", self.w_bomb_danger, ", ", self.w_bomb_potential, ", ", self.w_explosion_danger, sep='', file=log_file)
+                self.agent_state = "PATHING"
+                self.wait_timer = 0
+                # Random cost, we can tweak this later
+                self.monster_engage_distance = 10
+                self.flee_target = None
+            print("Loaded weights: ", self.w_goal, ", ", self.w_monster, ", ", self.w_bomb_danger, ", ", self.w_bomb_potential, ", ", self.w_explosion_danger, sep='')
         except Exception as e:
             print("Failed to read weights:", e)
     
@@ -285,6 +291,62 @@ class QLearningCharacter(CharacterEntity):
                 best_action = action
                 best_value = val
         return best_value, best_action
+    
+    def find_path_to_goals(self, wrld: SensedWorld, goals: set[tuple[int, int]]):
+        me = wrld.me(self)
+        if not me:
+            me = self
+        start_pos = (me.x, me.y)
+
+        if not goals:
+            return float("inf"), None
+
+        queue = PriorityQueue()
+        came_from = {start_pos: None}
+        cost_so_far = {start_pos: 0}
+
+        found_goal = None
+        queue.put((0, start_pos))
+
+        while not queue.empty():
+            _, pos = queue.get(False)
+
+            if pos in goals:
+                found_goal = pos
+                break
+
+            for neighbor in self.get_neighbors(wrld, pos):
+                new_cost = cost_so_far[pos] + 1
+
+                if wrld.wall_at(neighbor[0], neighbor[1]):
+                    m = -1
+                    for bomb in self.find_bombs_for_wall(wrld, neighbor[0], neighbor[1]):
+                        m = max(m, bomb.timer)
+                    if m < 0:
+                        m = wrld.bomb_time
+                    new_cost += m + wrld.expl_duration
+                elif (expl := wrld.explosion_at(neighbor[0], neighbor[1])):
+                    new_cost += expl.timer
+
+                if neighbor not in cost_so_far or new_cost < cost_so_far[neighbor]:
+                    cost_so_far[neighbor] = new_cost
+                    priority = new_cost + min(self.dist(g, neighbor) for g in goals)
+                    queue.put((priority, neighbor))
+                    came_from[neighbor] = pos
+
+        if not found_goal:
+            return float("inf"), None
+
+        path = []
+        pos = found_goal
+        while pos is not None:
+            path.append(pos)
+            pos = came_from[pos]
+        path.reverse()
+
+        first_step = path[1] if len(path) > 1 else None
+
+        return cost_so_far[found_goal], first_step
 
     def q_learning_update(self, wrld: World, reward: float, alpha=0.5, gamma=0.9):
         me = wrld.me(self)
@@ -331,41 +393,172 @@ class QLearningCharacter(CharacterEntity):
         dy = p_path[1] - self.y
 
         if wrld.wall_at(*p_path):
-            return 2 if a_exmax == True else -1
+            return 5 if a_exmax == True else -1
         elif a_exmax == True:
             return 0
         elif isinstance(a_exmax, tuple):
-            return (a_exmax[0] * dx + a_exmax[1] * dy) + (1 / (1 + d_goal) - 0.9)
+            # return (a_exmax[0] * dx + a_exmax[1] * dy) + (1 / (1 + d_goal) - 0.9)
+            return (a_exmax[0] * dx + a_exmax[1] * dy)
         else:
             print("Error, a_exmax is", a_exmax, v_exmax)
     
-    def do(self, wrld: World):
-        value, best_action = self.get_action(wrld)
-        (dist, next) = self.find_path(wrld)
-        reward = self.calc_reward(wrld, value, best_action, dist, next)
-        print(value, best_action, dist, next, reward)
+    # ------------------------------------------------------------------------------------------------------------------
+    # Pre-state machine do function
+    # ------------------------------------------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
+    # def do(self, wrld: World):
+    #     value, best_action = self.get_action(wrld)
+    #     (dist, next) = self.find_path(wrld)
+    #     reward = self.calc_reward(wrld, value, best_action, dist, next)
+    #     print(value, best_action, dist, next, reward)
 
-        candidate_weights = self.q_learning_update(wrld, reward)
-        # print(candidate_weights)
+    #     candidate_weights = self.q_learning_update(wrld, reward)
+    #     # print(candidate_weights)
 
-        self.w_goal, self.w_monster, self.w_bomb_danger, self.w_bomb_potential, self.w_explosion_danger = candidate_weights
-        if isinstance(best_action, tuple):
-            self.move(best_action[0], best_action[1])
-        elif best_action == True:
-            self.place_bomb()
+    #     self.w_goal, self.w_monster, self.w_bomb_danger, self.w_bomb_potential, self.w_explosion_danger = candidate_weights
+    #     if isinstance(best_action, tuple):
+    #         self.move(best_action[0], best_action[1])
+    #     elif best_action == True:
+    #         self.place_bomb()
+    #     else:
+    #         return
+    # ------------------------------------------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------------------------------------------
+
+    def find_safe_flee_spot(self, wrld: World) -> tuple[int, int] | None:
+        me_x, me_y = self.x, self.y
+        all_neighbors = self.get_neighbors(wrld, (me_x, me_y))
+
+        safe_diagonal_squares = []
+        for pos in all_neighbors:
+            is_walkable = wrld.empty_at(pos[0], pos[1]) or wrld.exit_at(pos[0], pos[1])
+            is_diagonal = abs(pos[0] - me_x) == 1 and abs(pos[1] - me_y) == 1
+
+            if is_walkable and is_diagonal:
+                safe_diagonal_squares.append(pos)
+        
+        if safe_diagonal_squares:
+            return safe_diagonal_squares[0]
         else:
-            return
+            return None
+        
+
+    def do(self, wrld: World):
+        if self.agent_state == "WAITING":
+            if self.wait_timer > 0:
+                self.wait_timer -= 1
+                return
+            else:
+                self.agent_state = "PATHING"
+
+        elif self.agent_state == "FLEEING":
+            if (self.x, self.y) == self.flee_target:
+                # Added this check because some weird glitch where the agent runs in the diagonal in the else, unless stopped
+                self.move(0, 0)
+                self.agent_state = "WAITING"
+                self.wait_timer = wrld.bomb_time + wrld.expl_duration
+                return
+            else:
+                dx = self.flee_target[0] - self.x
+                dy = self.flee_target[1] - self.y
+                self.move(dx, dy)
+                return
+
+        elif self.agent_state == "PATHING":
+            monster_coords = set()
+            for m_list in wrld.monsters.values():
+                for m in m_list:
+                    monster_coords.add((m.x, m.y))
+
+            if monster_coords:
+                adjacent_goals = set()
+                for mx, my in monster_coords:
+                    for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                        neighbor = (mx + dx, my + dy)
+                        if wrld.width() > neighbor[0] >= 0 and wrld.height() > neighbor[1] >= 0 and wrld.empty_at(neighbor[0], neighbor[1]):
+                            adjacent_goals.add(neighbor)
+                
+                monster_dist = float('inf')
+                if adjacent_goals:
+                    monster_dist, _ = self.find_path_to_goals(wrld, goals=adjacent_goals)
+                
+                if monster_dist < self.monster_engage_distance:
+                    self.agent_state = "Q_LEARNING"
+                    return
+
+                
+            my_bomb = self.find_bomb(wrld, self)
+            if my_bomb:
+                self.flee_target = self.find_safe_flee_spot(wrld)
+                if self.flee_target:
+                    self.agent_state = "FLEEING"
+                return
+
+            _, next_step = self.find_path(wrld)
+            if next_step:
+                if wrld.wall_at(next_step[0], next_step[1]):
+                    if not my_bomb:
+                        self.place_bomb()
+                        self.flee_target = self.find_safe_flee_spot(wrld)
+                        if self.flee_target:
+                            self.agent_state = "FLEEING"
+                        else:
+                            self.agent_state = "WAITING"
+                            self.wait_timer = wrld.bomb_time + wrld.expl_duration
+                else:
+                    dx = next_step[0] - self.x
+                    dy = next_step[1] - self.y
+                    self.move(dx, dy)
+                    time.sleep(1) 
+
+        elif self.agent_state == "Q_LEARNING":
+            monster_coords = set()
+            for m_list in wrld.monsters.values():
+                for m in m_list:
+                    monster_coords.add((m.x, m.y))
+            
+            if not monster_coords:
+                self.agent_state = "PATHING"
+                return
+
+            adjacent_goals = set()
+            for mx, my in monster_coords:
+                for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                    neighbor = (mx + dx, my + dy)
+                    if wrld.width() > neighbor[0] >= 0 and wrld.height() > neighbor[1] >= 0 and wrld.empty_at(neighbor[0], neighbor[1]):
+                        adjacent_goals.add(neighbor)
+
+            monster_dist = float('inf')
+            if adjacent_goals:
+                monster_dist, _ = self.find_path_to_goals(wrld, goals=adjacent_goals)
+            
+            if monster_dist > self.monster_engage_distance:
+                self.agent_state = "PATHING"
+                return
+
+            # Added some place holder code for how we want to treat the Q learning elements
+            _, best_action = self.get_action(wrld)
+            
+            if isinstance(best_action, tuple):
+                self.move(best_action[0], best_action[1])
+            elif best_action == True:
+                self.place_bomb()
+                self.flee_target = self.find_safe_flee_spot(wrld)
+                if self.flee_target:
+                    self.agent_state = "FLEEING"
         
     def done(self, wrld: SensedWorld):
         reward = 0
         event: Event
         for event in wrld.events:
             if event.tpe == Event.CHARACTER_FOUND_EXIT and event.character == self:
-                reward += 10
+                reward += 100
             elif event.tpe == Event.CHARACTER_KILLED_BY_MONSTER and event.character == self:
-                reward -= 10
+                reward -= 1
             elif event.tpe == Event.BOMB_HIT_CHARACTER and event.other == self:
-                reward -= 10
+                reward -= 0.5
         if wrld.time <= 0:
             reward = -5
         
